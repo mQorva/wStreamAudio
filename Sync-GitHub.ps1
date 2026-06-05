@@ -37,7 +37,8 @@
 
 .PARAMETER ReleaseSetup
     Erstellt oder aktualisiert nach dem Push ein GitHub Release und lädt den
-    Setup-Installer aus artifacts\installer hoch. Benötigt GitHub CLI (gh).
+    Setup-Installer aus artifacts\installer hoch. Installiert GitHub CLI (gh)
+    automatisch, falls sie fehlt.
     Fragt interaktiv Draft/Pre-Release und bei Bedarf Überschreiben ab. Alias: -Release.
 #>
 param(
@@ -55,6 +56,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 $repoRoot = $PSScriptRoot
+$script:GitHubCliCommand = $null
 
 if ([string]::IsNullOrWhiteSpace($Branch)) {
     throw "Branch darf nicht leer sein (Vorgabe: main)."
@@ -245,10 +247,150 @@ function Get-AppVersion {
     return $version.Trim()
 }
 
+function Add-DirectoryToPath {
+    param([Parameter(Mandatory = $true)][string]$Directory)
+
+    if (-not (Test-Path -LiteralPath $Directory)) {
+        return
+    }
+
+    $pathParts = @($env:PATH -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if (-not ($pathParts | Where-Object { $_ -ieq $Directory })) {
+        $env:PATH = "$Directory;$env:PATH"
+    }
+
+    $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    $userParts = @($userPath -split ';' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    if (-not ($userParts | Where-Object { $_ -ieq $Directory })) {
+        $newUserPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $Directory } else { "$Directory;$userPath" }
+        [Environment]::SetEnvironmentVariable("Path", $newUserPath, "User")
+    }
+}
+
+function Get-GitHubCliCommand {
+    if (-not [string]::IsNullOrWhiteSpace($script:GitHubCliCommand) -and (Test-Path -LiteralPath $script:GitHubCliCommand)) {
+        return $script:GitHubCliCommand
+    }
+
+    $command = Get-Command gh -ErrorAction SilentlyContinue
+    if ($command) {
+        $script:GitHubCliCommand = $command.Source
+        return $script:GitHubCliCommand
+    }
+
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "GitHub CLI\gh.exe"),
+        (Join-Path $env:ProgramFiles "GitHub CLI\bin\gh.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI\gh.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI\bin\gh.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI Portable\gh.exe"),
+        (Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI Portable\bin\gh.exe")
+    )
+
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) {
+            Add-DirectoryToPath -Directory (Split-Path -Parent $candidate)
+            $script:GitHubCliCommand = $candidate
+            return $script:GitHubCliCommand
+        }
+    }
+
+    return $null
+}
+
+function Install-GitHubCliWithWinget {
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    Write-Host "GitHub CLI fehlt - installiere über winget ..."
+    & winget install --id GitHub.cli --source winget --accept-package-agreements --accept-source-agreements
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "winget-Installation ist fehlgeschlagen (Exit $LASTEXITCODE) - nutze portablen Fallback."
+        return $false
+    }
+
+    return ($null -ne (Get-GitHubCliCommand))
+}
+
+function Install-GitHubCliPortable {
+    $installRoot = Join-Path $env:LOCALAPPDATA "Programs\GitHub CLI Portable"
+    $zipPath = Join-Path $env:TEMP "gh-windows-amd64.zip"
+    $extractRoot = Join-Path $env:TEMP ("gh-portable-" + [guid]::NewGuid().ToString("N"))
+
+    Write-Host "GitHub CLI fehlt - installiere portabel nach $installRoot ..."
+    New-Item -ItemType Directory -Force -Path $installRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
+
+    try {
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cli/cli/releases/latest" -Headers @{ "User-Agent" = "wStreamAudio-Sync-GitHub" }
+        $asset = $release.assets | Where-Object { $_.name -match "windows_amd64\.zip$" } | Select-Object -First 1
+        if ($null -eq $asset) {
+            throw "Kein windows_amd64.zip Asset im aktuellen GitHub CLI Release gefunden."
+        }
+
+        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $zipPath
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $extractRoot -Force
+
+        $gh = Get-ChildItem -Path $extractRoot -Recurse -Filter gh.exe | Select-Object -First 1
+        if ($null -eq $gh) {
+            throw "gh.exe wurde im heruntergeladenen Archiv nicht gefunden."
+        }
+
+        Copy-Item -LiteralPath $gh.FullName -Destination (Join-Path $installRoot "gh.exe") -Force
+        $license = Get-ChildItem -Path (Split-Path -Parent $gh.FullName) -Filter LICENSE* -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($license) {
+            Copy-Item -LiteralPath $license.FullName -Destination $installRoot -Force
+        }
+
+        Add-DirectoryToPath -Directory $installRoot
+        $script:GitHubCliCommand = Join-Path $installRoot "gh.exe"
+        return $script:GitHubCliCommand
+    }
+    finally {
+        Remove-Item -LiteralPath $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $extractRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Ensure-GitHubCli {
+    $command = Get-GitHubCliCommand
+    if ($command) {
+        return $command
+    }
+
+    if (Install-GitHubCliWithWinget) {
+        return (Get-GitHubCliCommand)
+    }
+
+    return (Install-GitHubCliPortable)
+}
+
+function Ensure-GitHubCliAuthentication {
+    $null = & $script:GitHubCliCommand auth status 2>$null
+    if ($LASTEXITCODE -eq 0) {
+        return
+    }
+
+    $credentialInput = "protocol=https`nhost=github.com`n`n"
+    $filled = $credentialInput | git credential fill 2>$null
+    $token = ($filled | Where-Object { $_ -like "password=*" } | Select-Object -First 1) -replace "^password=", ""
+
+    if (-not [string]::IsNullOrWhiteSpace($token)) {
+        $env:GH_TOKEN = $token
+        $null = & $script:GitHubCliCommand auth status 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+    }
+
+    throw "GitHub CLI ist installiert, aber nicht angemeldet. Einmalig ausführen: gh auth login"
+}
+
 function Test-GitHubReleaseExists {
     param([Parameter(Mandatory = $true)][string]$Tag)
 
-    $null = & gh release view $Tag 2>$null
+    $null = & $script:GitHubCliCommand release view $Tag 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 
@@ -310,9 +452,8 @@ function Invoke-GitHubReleaseSetup {
         throw "-ReleaseSetup ist nur mit -Action Push oder PullPush sinnvoll."
     }
 
-    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-        throw "GitHub CLI 'gh' wurde nicht gefunden. Installieren: winget install GitHub.cli"
-    }
+    $script:GitHubCliCommand = Ensure-GitHubCli
+    Ensure-GitHubCliAuthentication
 
     $version = Get-AppVersion
     $tag = "v$version"
@@ -333,7 +474,7 @@ function Invoke-GitHubReleaseSetup {
         Invoke-RepoGit @("tag", "-f", $tag, $head)
         Invoke-RepoGit @("push", "origin", $tag, "--force")
         Write-Host "GitHub Release $tag existiert - lade Setup-Asset neu hoch."
-        & gh release upload $tag $setup --clobber
+        & $script:GitHubCliCommand release upload $tag $setup --clobber
         if ($LASTEXITCODE -ne 0) {
             throw "gh release upload ist fehlgeschlagen."
         }
@@ -353,7 +494,7 @@ function Invoke-GitHubReleaseSetup {
     }
 
     Write-Host ("gh " + ($args -join " "))
-    & gh @args
+    & $script:GitHubCliCommand @args
     if ($LASTEXITCODE -ne 0) {
         throw "gh release create ist fehlgeschlagen."
     }
