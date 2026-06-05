@@ -38,31 +38,7 @@
 .PARAMETER ReleaseSetup
     Erstellt oder aktualisiert nach dem Push ein GitHub Release und lädt den
     Setup-Installer aus artifacts\installer hoch. Benötigt GitHub CLI (gh).
-
-.PARAMETER ReleaseVersion
-    Version für Tag/Release/Setup-Dateiname. Leer = AppVersion aus Directory.Build.props.
-
-.PARAMETER ReleaseTag
-    Git-Tag für das Release. Leer = v<ReleaseVersion>.
-
-.PARAMETER ReleaseTitle
-    Titel des GitHub Releases. Leer = wStreamAudio <ReleaseVersion>.
-
-.PARAMETER ReleaseNotes
-    Release-Notizen. Leer = Setup-Installer für wStreamAudio <ReleaseVersion>.
-
-.PARAMETER SetupPath
-    Pfad zur Setup-Datei. Leer = artifacts\installer\wStreamAudio-Setup-<ReleaseVersion>.exe.
-
-.PARAMETER DraftRelease
-    Release als Draft erstellen.
-
-.PARAMETER Prerelease
-    Release als Pre-Release markieren.
-
-.PARAMETER ForceReleaseAsset
-    Überschreibt bei einem bereits bestehenden Release das Setup-Asset. Ohne diesen
-    Schalter bricht -ReleaseSetup ab, wenn das Release schon existiert.
+    Fragt bei Bedarf interaktiv nach zusätzlichen Release-Optionen. Alias: -Release.
 #>
 param(
     [ValidateSet("Pull", "Push", "PullPush")]
@@ -73,15 +49,8 @@ param(
     [switch]$PushForceWithLease,
     [switch]$SkipPull,
     [string]$OriginUrl = "https://github.com/CannonRS/wStreamAudio.git",
-    [switch]$ReleaseSetup,
-    [string]$ReleaseVersion = "",
-    [string]$ReleaseTag = "",
-    [string]$ReleaseTitle = "",
-    [string]$ReleaseNotes = "",
-    [string]$SetupPath = "",
-    [switch]$DraftRelease,
-    [switch]$Prerelease,
-    [switch]$ForceReleaseAsset
+    [Alias("Release")]
+    [switch]$ReleaseSetup
 )
 
 $ErrorActionPreference = "Stop"
@@ -283,6 +252,97 @@ function Test-GitHubReleaseExists {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Read-YesNo {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Question,
+        [bool]$Default = $false
+    )
+
+    $suffix = if ($Default) { "[J/n]" } else { "[j/N]" }
+
+    while ($true) {
+        $answer = (Read-Host "$Question $suffix").Trim().ToLowerInvariant()
+        if ([string]::IsNullOrWhiteSpace($answer)) {
+            return $Default
+        }
+
+        switch ($answer) {
+            { $_ -in @("j", "ja", "y", "yes") } { return $true }
+            { $_ -in @("n", "nein", "no") } { return $false }
+            default { Write-Host "Bitte 'j' oder 'n' eingeben." }
+        }
+    }
+}
+
+function Read-OptionalText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Question,
+        [Parameter(Mandatory = $true)]
+        [string]$Default
+    )
+
+    $answer = Read-Host "$Question (leer = $Default)"
+    if ([string]::IsNullOrWhiteSpace($answer)) {
+        return $Default
+    }
+
+    return $answer.Trim()
+}
+
+function Get-ReleaseOptions {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Version,
+        [Parameter(Mandatory = $true)]
+        [string]$DefaultSetupPath
+    )
+
+    $title = "wStreamAudio $Version"
+    $notes = "Setup-Installer für wStreamAudio $Version."
+    $setup = $DefaultSetupPath
+    $draft = $false
+    $prerelease = $false
+
+    Write-Host "Release-Version: $Version"
+    Write-Host "Release-Tag: v$Version"
+    Write-Host "Setup-Datei: $DefaultSetupPath"
+
+    if (Read-YesNo "Zusätzliche Release-Optionen anpassen?") {
+        $draft = Read-YesNo "Release als Draft erstellen?"
+        $prerelease = Read-YesNo "Release als Pre-Release markieren?"
+
+        if (Read-YesNo "Release-Titel anpassen?") {
+            $title = Read-OptionalText "Release-Titel" $title
+        }
+
+        if (Read-YesNo "Release-Notizen anpassen?") {
+            $notes = Read-OptionalText "Release-Notizen" $notes
+        }
+
+        if (Read-YesNo "Anderen Setup-Pfad verwenden?") {
+            $setupAnswer = Read-Host "Setup-Pfad"
+            if ([string]::IsNullOrWhiteSpace($setupAnswer)) {
+                throw "Setup-Pfad darf nicht leer sein."
+            }
+
+            $setup = $setupAnswer.Trim()
+            if (-not [System.IO.Path]::IsPathRooted($setup)) {
+                $setup = Join-Path $repoRoot $setup
+            }
+        }
+    }
+
+    [pscustomobject]@{
+        Title = $title
+        Notes = $notes
+        SetupPath = $setup
+        Draft = $draft
+        Prerelease = $prerelease
+    }
+}
+
 function Invoke-GitHubReleaseSetup {
     if ($Action -eq "Pull") {
         throw "-ReleaseSetup ist nur mit -Action Push oder PullPush sinnvoll."
@@ -292,33 +352,25 @@ function Invoke-GitHubReleaseSetup {
         throw "GitHub CLI 'gh' wurde nicht gefunden. Installieren: winget install GitHub.cli"
     }
 
-    $version = if ([string]::IsNullOrWhiteSpace($ReleaseVersion)) { Get-AppVersion } else { $ReleaseVersion.Trim() }
-    $tag = if ([string]::IsNullOrWhiteSpace($ReleaseTag)) { "v$version" } else { $ReleaseTag.Trim() }
-    $title = if ([string]::IsNullOrWhiteSpace($ReleaseTitle)) { "wStreamAudio $version" } else { $ReleaseTitle.Trim() }
-    $notes = if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) { "Setup-Installer für wStreamAudio $version." } else { $ReleaseNotes }
-    $setup = if ([string]::IsNullOrWhiteSpace($SetupPath)) {
-        Join-Path $repoRoot "artifacts\installer\wStreamAudio-Setup-$version.exe"
-    }
-    elseif ([System.IO.Path]::IsPathRooted($SetupPath)) {
-        $SetupPath
-    }
-    else {
-        Join-Path $repoRoot $SetupPath
-    }
+    $version = Get-AppVersion
+    $tag = "v$version"
+    $defaultSetup = Join-Path $repoRoot "artifacts\installer\wStreamAudio-Setup-$version.exe"
+    $options = Get-ReleaseOptions -Version $version -DefaultSetupPath $defaultSetup
+    $setup = $options.SetupPath
 
     if (-not (Test-Path -LiteralPath $setup)) {
-        throw "Setup-Datei wurde nicht gefunden: $setup`nVorher .\Build.ps1 ausführen oder -SetupPath setzen."
+        throw "Setup-Datei wurde nicht gefunden: $setup`nVorher .\Build.ps1 ausführen."
     }
 
     if (Test-GitHubReleaseExists -Tag $tag) {
-        if (-not $ForceReleaseAsset) {
-            throw "GitHub Release $tag existiert bereits. Version erhöhen oder bewusst mit -ForceReleaseAsset überschreiben."
+        if (-not (Read-YesNo "GitHub Release $tag existiert bereits. Setup-Asset überschreiben?")) {
+            throw "GitHub Release $tag existiert bereits. Version erhöhen oder Überschreiben bestätigen."
         }
 
         $head = (& git -C $repoRoot rev-parse HEAD).Trim()
         Invoke-RepoGit @("tag", "-f", $tag, $head)
         Invoke-RepoGit @("push", "origin", $tag, "--force")
-        Write-Host "GitHub Release $tag existiert - lade Setup-Asset wegen -ForceReleaseAsset neu hoch."
+        Write-Host "GitHub Release $tag existiert - lade Setup-Asset neu hoch."
         & gh release upload $tag $setup --clobber
         if ($LASTEXITCODE -ne 0) {
             throw "gh release upload ist fehlgeschlagen."
@@ -330,11 +382,11 @@ function Invoke-GitHubReleaseSetup {
     Invoke-RepoGit @("tag", "-f", $tag, $head)
     Invoke-RepoGit @("push", "origin", $tag, "--force")
 
-    $args = @("release", "create", $tag, $setup, "--title", $title, "--notes", $notes, "--target", $syncBranch)
-    if ($DraftRelease) {
+    $args = @("release", "create", $tag, $setup, "--title", $options.Title, "--notes", $options.Notes, "--target", $syncBranch)
+    if ($options.Draft) {
         $args += "--draft"
     }
-    if ($Prerelease) {
+    if ($options.Prerelease) {
         $args += "--prerelease"
     }
 
