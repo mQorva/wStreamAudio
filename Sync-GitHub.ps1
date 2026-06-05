@@ -34,6 +34,35 @@
 
 .PARAMETER OriginUrl
     URL für "git remote add origin", falls origin noch fehlt (HTTPS oder SSH).
+
+.PARAMETER ReleaseSetup
+    Erstellt oder aktualisiert nach dem Push ein GitHub Release und lädt den
+    Setup-Installer aus artifacts\installer hoch. Benötigt GitHub CLI (gh).
+
+.PARAMETER ReleaseVersion
+    Version für Tag/Release/Setup-Dateiname. Leer = AppVersion aus Directory.Build.props.
+
+.PARAMETER ReleaseTag
+    Git-Tag für das Release. Leer = v<ReleaseVersion>.
+
+.PARAMETER ReleaseTitle
+    Titel des GitHub Releases. Leer = wStreamAudio <ReleaseVersion>.
+
+.PARAMETER ReleaseNotes
+    Release-Notizen. Leer = Setup-Installer für wStreamAudio <ReleaseVersion>.
+
+.PARAMETER SetupPath
+    Pfad zur Setup-Datei. Leer = artifacts\installer\wStreamAudio-Setup-<ReleaseVersion>.exe.
+
+.PARAMETER DraftRelease
+    Release als Draft erstellen.
+
+.PARAMETER Prerelease
+    Release als Pre-Release markieren.
+
+.PARAMETER ForceReleaseAsset
+    Überschreibt bei einem bereits bestehenden Release das Setup-Asset. Ohne diesen
+    Schalter bricht -ReleaseSetup ab, wenn das Release schon existiert.
 #>
 param(
     [ValidateSet("Pull", "Push", "PullPush")]
@@ -43,7 +72,16 @@ param(
     [switch]$AllowUnrelatedHistories,
     [switch]$PushForceWithLease,
     [switch]$SkipPull,
-    [string]$OriginUrl = "https://github.com/CannonRS/wStreamAudio.git"
+    [string]$OriginUrl = "https://github.com/CannonRS/wStreamAudio.git",
+    [switch]$ReleaseSetup,
+    [string]$ReleaseVersion = "",
+    [string]$ReleaseTag = "",
+    [string]$ReleaseTitle = "",
+    [string]$ReleaseNotes = "",
+    [string]$SetupPath = "",
+    [switch]$DraftRelease,
+    [switch]$Prerelease,
+    [switch]$ForceReleaseAsset
 )
 
 $ErrorActionPreference = "Stop"
@@ -227,6 +265,86 @@ function Invoke-RepoPush {
     }
 }
 
+function Get-AppVersion {
+    $propsPath = Join-Path $repoRoot "Directory.Build.props"
+    [xml]$props = Get-Content -LiteralPath $propsPath
+    $version = $props.Project.PropertyGroup.AppVersion
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "AppVersion wurde in Directory.Build.props nicht gefunden."
+    }
+
+    return $version.Trim()
+}
+
+function Test-GitHubReleaseExists {
+    param([Parameter(Mandatory = $true)][string]$Tag)
+
+    $null = & gh release view $Tag 2>$null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function Invoke-GitHubReleaseSetup {
+    if ($Action -eq "Pull") {
+        throw "-ReleaseSetup ist nur mit -Action Push oder PullPush sinnvoll."
+    }
+
+    if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
+        throw "GitHub CLI 'gh' wurde nicht gefunden. Installieren: winget install GitHub.cli"
+    }
+
+    $version = if ([string]::IsNullOrWhiteSpace($ReleaseVersion)) { Get-AppVersion } else { $ReleaseVersion.Trim() }
+    $tag = if ([string]::IsNullOrWhiteSpace($ReleaseTag)) { "v$version" } else { $ReleaseTag.Trim() }
+    $title = if ([string]::IsNullOrWhiteSpace($ReleaseTitle)) { "wStreamAudio $version" } else { $ReleaseTitle.Trim() }
+    $notes = if ([string]::IsNullOrWhiteSpace($ReleaseNotes)) { "Setup-Installer für wStreamAudio $version." } else { $ReleaseNotes }
+    $setup = if ([string]::IsNullOrWhiteSpace($SetupPath)) {
+        Join-Path $repoRoot "artifacts\installer\wStreamAudio-Setup-$version.exe"
+    }
+    elseif ([System.IO.Path]::IsPathRooted($SetupPath)) {
+        $SetupPath
+    }
+    else {
+        Join-Path $repoRoot $SetupPath
+    }
+
+    if (-not (Test-Path -LiteralPath $setup)) {
+        throw "Setup-Datei wurde nicht gefunden: $setup`nVorher .\Build.ps1 ausführen oder -SetupPath setzen."
+    }
+
+    if (Test-GitHubReleaseExists -Tag $tag) {
+        if (-not $ForceReleaseAsset) {
+            throw "GitHub Release $tag existiert bereits. Version erhöhen oder bewusst mit -ForceReleaseAsset überschreiben."
+        }
+
+        $head = (& git -C $repoRoot rev-parse HEAD).Trim()
+        Invoke-RepoGit @("tag", "-f", $tag, $head)
+        Invoke-RepoGit @("push", "origin", $tag, "--force")
+        Write-Host "GitHub Release $tag existiert - lade Setup-Asset wegen -ForceReleaseAsset neu hoch."
+        & gh release upload $tag $setup --clobber
+        if ($LASTEXITCODE -ne 0) {
+            throw "gh release upload ist fehlgeschlagen."
+        }
+        return
+    }
+
+    $head = (& git -C $repoRoot rev-parse HEAD).Trim()
+    Invoke-RepoGit @("tag", "-f", $tag, $head)
+    Invoke-RepoGit @("push", "origin", $tag, "--force")
+
+    $args = @("release", "create", $tag, $setup, "--title", $title, "--notes", $notes, "--target", $syncBranch)
+    if ($DraftRelease) {
+        $args += "--draft"
+    }
+    if ($Prerelease) {
+        $args += "--prerelease"
+    }
+
+    Write-Host ("gh " + ($args -join " "))
+    & gh @args
+    if ($LASTEXITCODE -ne 0) {
+        throw "gh release create ist fehlgeschlagen."
+    }
+}
+
 Assert-GitRepo
 Ensure-Origin -Url $OriginUrl
 Ensure-TargetBranch
@@ -248,5 +366,8 @@ switch ($Action) {
     }
 }
 
-Write-Host "Fertig ($Action)."
+if ($ReleaseSetup) {
+    Invoke-GitHubReleaseSetup
+}
 
+Write-Host "Fertig ($Action)."

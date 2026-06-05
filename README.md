@@ -77,10 +77,22 @@ ausschließlich in der App verwaltet und dauerhaft gespeichert.
 .\Sync-GitHub.ps1 -SkipPull
 ```
 
-Für ein GitHub-Release zuerst die Version in `Directory.Build.props` erhöhen,
-dann `.\Build.ps1` ausführen und in GitHub unter **Releases** ein neues Release
-mit Tag `v<Version>` erstellen. Als Asset eignet sich der erzeugte Installer
-unter `artifacts\installer\wStreamAudio-Setup-<Version>.exe`.
+Für GitHub-Veröffentlichungen wird die Setup-Datei als Release-Asset
+hochgeladen, damit Nutzer nicht das komplette Repository laden müssen:
+
+```powershell
+.\Build.ps1
+.\Sync-GitHub.ps1 -Action PullPush -ReleaseSetup
+```
+
+Das nutzt die `AppVersion` aus `Directory.Build.props`, erstellt/aktualisiert
+den Tag `v<Version>` und lädt
+`artifacts\installer\wStreamAudio-Setup-<Version>.exe` in das GitHub Release
+hoch. Voraussetzung: GitHub CLI (`gh`) ist installiert und angemeldet.
+
+Ein bestehendes Release wird dabei nicht überschrieben. Wenn ein Release für
+dieselbe Version bewusst ersetzt werden soll, muss zusätzlich
+`-ForceReleaseAsset` gesetzt werden.
 
 ## Bedienung
 
