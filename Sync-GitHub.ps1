@@ -38,7 +38,7 @@
 .PARAMETER ReleaseSetup
     Erstellt oder aktualisiert nach dem Push ein GitHub Release und lädt den
     Setup-Installer aus artifacts\installer hoch. Benötigt GitHub CLI (gh).
-    Fragt bei Bedarf interaktiv nach zusätzlichen Release-Optionen. Alias: -Release.
+    Fragt interaktiv Draft/Pre-Release und bei Bedarf Überschreiben ab. Alias: -Release.
 #>
 param(
     [ValidateSet("Pull", "Push", "PullPush")]
@@ -275,22 +275,6 @@ function Read-YesNo {
     }
 }
 
-function Read-OptionalText {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Question,
-        [Parameter(Mandatory = $true)]
-        [string]$Default
-    )
-
-    $answer = Read-Host "$Question (leer = $Default)"
-    if ([string]::IsNullOrWhiteSpace($answer)) {
-        return $Default
-    }
-
-    return $answer.Trim()
-}
-
 function Get-ReleaseOptions {
     param(
         [Parameter(Mandatory = $true)]
@@ -309,30 +293,8 @@ function Get-ReleaseOptions {
     Write-Host "Release-Tag: v$Version"
     Write-Host "Setup-Datei: $DefaultSetupPath"
 
-    if (Read-YesNo "Zusätzliche Release-Optionen anpassen?") {
-        $draft = Read-YesNo "Release als Draft erstellen?"
-        $prerelease = Read-YesNo "Release als Pre-Release markieren?"
-
-        if (Read-YesNo "Release-Titel anpassen?") {
-            $title = Read-OptionalText "Release-Titel" $title
-        }
-
-        if (Read-YesNo "Release-Notizen anpassen?") {
-            $notes = Read-OptionalText "Release-Notizen" $notes
-        }
-
-        if (Read-YesNo "Anderen Setup-Pfad verwenden?") {
-            $setupAnswer = Read-Host "Setup-Pfad"
-            if ([string]::IsNullOrWhiteSpace($setupAnswer)) {
-                throw "Setup-Pfad darf nicht leer sein."
-            }
-
-            $setup = $setupAnswer.Trim()
-            if (-not [System.IO.Path]::IsPathRooted($setup)) {
-                $setup = Join-Path $repoRoot $setup
-            }
-        }
-    }
+    $draft = Read-YesNo "Release als Draft erstellen?"
+    $prerelease = Read-YesNo "Release als Pre-Release markieren?"
 
     [pscustomobject]@{
         Title = $title

@@ -88,9 +88,8 @@ hochgeladen, damit Nutzer nicht das komplette Repository laden müssen:
 Das nutzt die `AppVersion` aus `Directory.Build.props`, erstellt/aktualisiert
 den Tag `v<Version>` und lädt
 `artifacts\installer\wStreamAudio-Setup-<Version>.exe` in das GitHub Release
-hoch. Bei Bedarf fragt das Skript nach zusätzlichen Optionen wie Draft,
-Pre-Release, abweichendem Titel, Notizen oder Setup-Pfad. Voraussetzung:
-GitHub CLI (`gh`) ist installiert und angemeldet.
+hoch. Das Skript fragt `Draft?` und `Pre-Release?` direkt mit ja/nein ab.
+Voraussetzung: GitHub CLI (`gh`) ist installiert und angemeldet.
 
 Ein bestehendes Release wird dabei nur überschrieben, wenn die Nachfrage im
 Skript bestätigt wird.
