@@ -1,0 +1,27 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+TestResults/
+artifacts/release/
+artifacts/installer/
+artifacts/icon-backups/
+artifacts/**/*.zip
+*.log
+*.binlog
+
+# Zertifikate und Schlüssel gehören nicht ins öffentliche Repo.
+*.pfx
+*.snk
+
+# Beispiel-/Vorlagenprojekt
+Beispiel/
+
+# Lokale Nutzerdaten liegen unter %LOCALAPPDATA%\wStreamAudio und gehören nicht ins Repo.
+settings.json
+logs/
+
+# Plan-Workdir / lokale Notizen
+.claude/

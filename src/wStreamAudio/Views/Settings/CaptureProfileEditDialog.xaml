@@ -1,0 +1,74 @@
+<ContentDialog
+    x:Class="wStreamAudio.Views.Settings.CaptureProfileEditDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Audio-Quelle bearbeiten"
+    PrimaryButtonText="übernehmen"
+    CloseButtonText="abbrechen"
+    DefaultButton="Primary">
+
+    <ScrollViewer MaxHeight="520">
+        <StackPanel Spacing="12" Width="460">
+
+            <TextBox x:Name="NameBox" Header="Profilname" PlaceholderText="z.B. SPDIF — Wohnzimmer" />
+
+            <StackPanel Spacing="6">
+                <TextBlock Text="Modus" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                <RadioButton x:Name="ModeEndpoint" GroupName="Mode" Content="Endpoint-Loopback (System-Audio eines Geräts)" Checked="Mode_Checked" />
+                <RadioButton x:Name="ModeProcess" GroupName="Mode" Content="Per-App-Capture (Prozess-Loopback)" Checked="Mode_Checked" />
+            </StackPanel>
+
+            <StackPanel x:Name="EndpointPanel" Spacing="8">
+                <CheckBox x:Name="FollowDefaultBox" Content="Aktuellem System-Default-Wiedergabegerät folgen"
+                          Checked="FollowDefault_Changed" Unchecked="FollowDefault_Changed" />
+                <ComboBox x:Name="EndpointBox" Header="Wiedergabegerät" HorizontalAlignment="Stretch"
+                          DisplayMemberPath="DisplayName" />
+                <TextBlock x:Name="EndpointHint"
+                           Text="Wenn aktiviert, wird immer das Gerät genommen, das in Windows als Standard eingestellt ist."
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{ThemeResource CaptionTextBlockStyle}" />
+            </StackPanel>
+
+            <StackPanel x:Name="ProcessPanel" Spacing="8" Visibility="Collapsed">
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0"
+                             x:Name="ProcessNameBox"
+                             Header="Prozessname (ohne .exe)"
+                             PlaceholderText="z.B. Spotify, chrome, firefox" />
+                    <Button Grid.Column="1"
+                            VerticalAlignment="Bottom"
+                            Content="aus laufenden Apps wählen …"
+                            Click="PickProcess_Click" />
+                </Grid>
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Auswahl-Modus" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                    <RadioButton x:Name="ProcessIncludeRadio" GroupName="ProcMode" Content="Nur diesen Prozess aufnehmen (Include)" />
+                    <RadioButton x:Name="ProcessExcludeRadio" GroupName="ProcMode" Content="Alles außer diesem Prozess (Exclude)" />
+                </StackPanel>
+                <TextBlock Text="Benötigt Windows 10 Build 19041 oder neuer."
+                           TextWrapping="Wrap"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                           Style="{ThemeResource CaptionTextBlockStyle}" />
+            </StackPanel>
+
+            <StackPanel Spacing="6">
+                <TextBlock Text="Erweitert" Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                <ComboBox x:Name="SampleRateBox" Header="Sample-Rate" HorizontalAlignment="Stretch">
+                    <ComboBoxItem Content="Auto (Mix-Format)" Tag="0" />
+                    <ComboBoxItem Content="44 100 Hz" Tag="44100" />
+                    <ComboBoxItem Content="48 000 Hz" Tag="48000" />
+                </ComboBox>
+            </StackPanel>
+
+            <TextBlock x:Name="ErrorText"
+                       Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                       TextWrapping="Wrap"
+                       Visibility="Collapsed" />
+        </StackPanel>
+    </ScrollViewer>
+</ContentDialog>

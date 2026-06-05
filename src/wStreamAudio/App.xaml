@@ -1,0 +1,16 @@
+<Application
+    x:Class="wStreamAudio.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+
+            <!-- Tray-Menü-Style wird in TrayIconController.BuildPresenterStyle() per Code
+                 erzeugt und direkt am Flyout gesetzt — H.NotifyIcons SecondWindow löst
+                 App-Resource-Keys beim ersten Aufklappen nicht zuverlässig auf. -->
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\wStreamAudio.Core\wStreamAudio.Core.csproj" />
+    <ProjectReference Include="..\wStreamAudio.Infrastructure\wStreamAudio.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.7" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.7" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260416003" />
+    <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.2.250402" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\*.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\*.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\THIRD_PARTY_NOTICES.md" Link="THIRD_PARTY_NOTICES.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Platforms>x64</Platforms>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKBootstrapInitialize>true</WindowsAppSDKBootstrapInitialize>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\App.ico</ApplicationIcon>
+
+    <!-- Version/AssemblyVersion/FileVersion stammen aus Directory.Build.props ($(AppVersion)). -->
+
+    <!-- Framework-dependent Deployment: nutzt System-.NET-10-Desktop-Runtime und
+         WindowsAppRuntime 1.8 (am Zielrechner mit Install.ps1 sicherstellen).
+         Self-Contained ist mit WinUI 3 erfahrungsgemäß instabil. -->
+    <SelfContained>false</SelfContained>
+
+    <Authors>Ronny Schulz</Authors>
+    <Company></Company>
+    <Product>wStreamAudio</Product>
+    <AssemblyTitle>wStreamAudio</AssemblyTitle>
+    <AssemblyName>wStreamAudio</AssemblyName>
+    <RootNamespace>wStreamAudio</RootNamespace>
+    <Copyright>Copyright 2026 Ronny Schulz</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,21 @@
+<Project>
+  <PropertyGroup>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Authors>Ronny Schulz</Authors>
+    <Product>wStreamAudio</Product>
+
+    <!-- Zentrale Versionsnummer für App-Assemblies (AppVersion).
+         An einer Stelle ändern; Projekte erben über $(AppVersion).
+         Format: Major.Minor.Patch (3-stellig). -->
+    <AppVersion>0.2.1</AppVersion>
+    <Version>$(AppVersion)</Version>
+    <AssemblyVersion>$(AppVersion).0</AssemblyVersion>
+    <FileVersion>$(AppVersion).0</FileVersion>
+    <!-- Ohne dieses Flag hängt das .NET-SDK die Git-Commit-ID an die InformationalVersion
+         (SemVer-Metadaten nach „+") — erscheint dann in Fenstertitel und ProductVersion. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+</Project>

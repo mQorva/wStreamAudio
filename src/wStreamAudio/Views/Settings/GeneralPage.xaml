@@ -1,0 +1,53 @@
+<Page
+    x:Class="wStreamAudio.Views.Settings.GeneralPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    Background="Transparent">
+
+    <ScrollViewer Padding="0,0,16,0"
+                  HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="6">
+            <tk:SettingsCard x:Name="AutostartCard">
+                <ToggleSwitch x:Name="AutostartToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="AutostartToggle_Toggled" />
+            </tk:SettingsCard>
+            <tk:SettingsCard x:Name="LaunchHiddenCard">
+                <ToggleSwitch x:Name="LaunchHiddenToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="LaunchHiddenToggle_Toggled" />
+            </tk:SettingsCard>
+            <tk:SettingsCard x:Name="ResumePlaybackCard">
+                <ToggleSwitch x:Name="ResumePlaybackToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="ResumePlaybackToggle_Toggled" />
+            </tk:SettingsCard>
+            <tk:SettingsCard x:Name="MiniWindowCard">
+                <ToggleSwitch x:Name="MiniWindowToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="MiniWindowToggle_Toggled" />
+            </tk:SettingsCard>
+            <tk:SettingsCard x:Name="AutoActivateCard">
+                <ToggleSwitch x:Name="AutoActivateToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="AutoActivateToggle_Toggled" />
+            </tk:SettingsCard>
+            <tk:SettingsCard x:Name="ThemeCard">
+                <ComboBox x:Name="ThemeBox" SelectionChanged="ThemeBox_SelectionChanged">
+                    <ComboBoxItem x:Name="ThemeSystemItem" Tag="System" />
+                    <ComboBoxItem x:Name="ThemeLightItem" Tag="Light" />
+                    <ComboBoxItem x:Name="ThemeDarkItem" Tag="Dark" />
+                </ComboBox>
+            </tk:SettingsCard>
+            <tk:SettingsCard x:Name="LanguageCard">
+                <ComboBox x:Name="LanguageBox" SelectionChanged="LanguageBox_SelectionChanged">
+                    <ComboBoxItem x:Name="LangDeItem" Tag="de" />
+                    <ComboBoxItem x:Name="LangEnItem" Tag="en" />
+                </ComboBox>
+            </tk:SettingsCard>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

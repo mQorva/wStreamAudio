@@ -1,0 +1,143 @@
+<Page
+    x:Class="wStreamAudio.Views.Settings.LmsServerPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:tk="using:CommunityToolkit.WinUI.Controls"
+    Background="Transparent">
+
+    <ScrollViewer Padding="0,0,16,0"
+                  HorizontalScrollMode="Disabled"
+                  HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="12">
+
+            <!-- WSTREAMAUDIO-SERVER (Stream-URL, HTTP-Port, Firewall — die Infrastruktur,
+                 über die andere Dienste den Audio-Stream abholen) -->
+            <tk:SettingsExpander Header="wStreamAudio-Server"
+                                 Description="HTTP-Stream-Server, über den LMS/DLNA/AirPlay den Audio-Stream abholen.">
+                <tk:SettingsExpander.Items>
+                    <tk:SettingsCard Header="Stream-URL"
+                                     Description="Wird automatisch an die Dienste übergeben — hier nur zur Info / zum manuellen Testen."
+                                     ContentAlignment="Vertical"
+                                     HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="8" HorizontalAlignment="Stretch">
+                            <TextBox x:Name="StreamUrlBox" IsReadOnly="True" HorizontalAlignment="Stretch" />
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Button Content="im Browser öffnen" Click="OpenStreamUrl_Click" />
+                                <Button Content="lokal testen" Click="TestStreamUrl_Click" />
+                                <TextBlock x:Name="StreamSelfTestText"
+                                           VerticalAlignment="Center"
+                                           Style="{ThemeResource CaptionTextBlockStyle}"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </tk:SettingsCard>
+                    <tk:SettingsCard Header="HTTP-Port"
+                                     Description="Auf diesem Port lauscht wStreamAudio — Standard 8721.">
+                        <NumberBox x:Name="StreamPortBox"
+                                   Width="120"
+                                   SpinButtonPlacementMode="Inline"
+                                   Minimum="1024" Maximum="65535"
+                                   ValueChanged="StreamPortBox_ValueChanged" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard Header="Firewall-Regel automatisch setzen"
+                                     Description="Eingehender TCP-Port wird in der Windows-Firewall freigegeben (UAC erforderlich).">
+                        <ToggleSwitch x:Name="FirewallToggle"
+                                      OnContent="an" OffContent="aus"
+                                      Toggled="FirewallToggle_Toggled" />
+                    </tk:SettingsCard>
+                </tk:SettingsExpander.Items>
+            </tk:SettingsExpander>
+
+            <!-- SQUEEZEBOX / LMS -->
+            <tk:SettingsExpander Header="SqueezeBox (LMS)"
+                                 Description="Wiedergabe auf Squeezelite-/Squeezebox-Playern über einen Logitech Media Server.">
+                <ToggleSwitch x:Name="SqueezeBoxToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="SqueezeBoxToggle_Toggled" />
+                <tk:SettingsExpander.Items>
+                    <tk:SettingsCard Header="Auto-Discovery (mDNS)"
+                                     Description="LMS automatisch im LAN suchen.">
+                        <ToggleSwitch x:Name="AutoDiscoverToggle" Toggled="AutoDiscoverToggle_Toggled" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard Header="LMS-Host"
+                                     Description="Hostname oder IP-Adresse des Logitech Media Servers.">
+                        <TextBox x:Name="HostBox" Width="240" TextChanged="HostBox_TextChanged" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard Header="LMS-Port"
+                                     Description="Standard: 9000.">
+                        <NumberBox x:Name="PortBox"
+                                   Width="120"
+                                   SpinButtonPlacementMode="Inline"
+                                   Minimum="1" Maximum="65535"
+                                   ValueChanged="PortBox_ValueChanged" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard Header="Verbindung testen"
+                                     Description="Prüft TCP-Erreichbarkeit und ob auf dem Port ein Logitech Media Server antwortet."
+                                     ContentAlignment="Vertical"
+                                     HorizontalContentAlignment="Stretch">
+                        <StackPanel Spacing="8" HorizontalAlignment="Stretch">
+                            <Button x:Name="TestButton" Content="testen" Click="TestConnection_Click" />
+                            <Border x:Name="TestResultPanel"
+                                    Visibility="Collapsed"
+                                    Padding="12,8"
+                                    CornerRadius="4"
+                                    BorderThickness="1">
+                                <StackPanel Spacing="2">
+                                    <TextBlock x:Name="TestResultTitle"
+                                               Style="{ThemeResource BodyStrongTextBlockStyle}" />
+                                    <TextBlock x:Name="TestResultMessage"
+                                               Style="{ThemeResource CaptionTextBlockStyle}"
+                                               TextWrapping="Wrap"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </tk:SettingsCard>
+                </tk:SettingsExpander.Items>
+            </tk:SettingsExpander>
+
+            <!-- DLNA -->
+            <tk:SettingsExpander Header="DLNA / UPnP"
+                                 Description="Direkt-Wiedergabe auf DLNA-MediaRenderern (Smart-TV, AVR, …) ohne LMS-Umweg.">
+                <ToggleSwitch x:Name="DlnaToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="DlnaToggle_Toggled" />
+                <tk:SettingsExpander.Items>
+                    <tk:SettingsCard Header="Auto-Discovery (SSDP)"
+                                     Description="DLNA-Renderer beim Öffnen der Streaming-Seite automatisch im LAN suchen.">
+                        <ToggleSwitch x:Name="DlnaAutoDiscoverToggle"
+                                      OnContent="an" OffContent="aus"
+                                      Toggled="DlnaAutoDiscoverToggle_Toggled" />
+                    </tk:SettingsCard>
+                    <tk:SettingsCard Header="Puffer (ms)"
+                                     Description="Puffergröße, mit der wStreamAudio den Renderer initialisiert. Höhere Werte = stabiler gegen Netzwerk-Aussetzer, niedriger = weniger Start-Latenz. Typisch 2000–4000 ms für AVRs.">
+                        <NumberBox x:Name="DlnaBufferBox"
+                                   Width="120"
+                                   SpinButtonPlacementMode="Inline"
+                                   SmallChange="100" LargeChange="500"
+                                   Minimum="0" Maximum="10000"
+                                   ValueChanged="DlnaBufferBox_ValueChanged" />
+                    </tk:SettingsCard>
+                </tk:SettingsExpander.Items>
+            </tk:SettingsExpander>
+
+            <!-- AIRPLAY -->
+            <tk:SettingsExpander Header="AirPlay"
+                                 Description="Direktwiedergabe auf AirPlay-1-Empfängern.">
+                <ToggleSwitch x:Name="AirPlayToggle"
+                              OnContent="an" OffContent="aus"
+                              Toggled="AirPlayToggle_Toggled" />
+                <tk:SettingsExpander.Items>
+                    <tk:SettingsCard Header="Auto-Discovery (mDNS / Bonjour)"
+                                     Description="AirPlay-Empfänger beim Öffnen der Streaming-Seite automatisch im LAN suchen.">
+                        <ToggleSwitch x:Name="AirPlayAutoDiscoverToggle"
+                                      OnContent="an" OffContent="aus"
+                                      Toggled="AirPlayAutoDiscoverToggle_Toggled" />
+                    </tk:SettingsCard>
+                </tk:SettingsExpander.Items>
+            </tk:SettingsExpander>
+
+        </StackPanel>
+    </ScrollViewer>
+</Page>

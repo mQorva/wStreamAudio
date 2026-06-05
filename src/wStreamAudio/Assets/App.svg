@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="wStreamAudio icon">
+  <path d="M230 26C0 0 5 102 128 128c123 26 128 256 26 230" fill="none" stroke="#1f2326" stroke-width="32" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M230 26C0 0 5 102 128 128c123 26 128 256 26 230" fill="none" stroke="#00b8a9" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="230" cy="26" r="26" fill="#00b8a9"/>
+  <circle cx="128" cy="128" r="25" fill="#00b8a9"/>
+  <circle cx="26" cy="230" r="26" fill="#00b8a9"/>
+  <circle cx="230" cy="26" r="11" fill="none"/>
+  <circle cx="128" cy="128" r="11" fill="none"/>
+  <circle cx="26" cy="230" r="11" fill="none"/>
+  <rect x="72" y="105" width="14" height="46" rx="7" fill="#00b8a9"/>
+  <rect x="100" y="67" width="14" height="122" rx="7" fill="#00b8a9"/>
+  <rect x="128" y="92" width="14" height="72" rx="7" fill="#00b8a9"/>
+  <rect x="156" y="80" width="14" height="96" rx="7" fill="#00b8a9"/>
+</svg>
