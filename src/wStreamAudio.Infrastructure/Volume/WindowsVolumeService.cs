@@ -7,10 +7,12 @@ using wStreamAudio.Core.Volume;
 namespace wStreamAudio.Infrastructure.Volume;
 
 /// <summary>
-/// Beobachtet die System-Lautstärke des Default-Render-Endpoints und
-/// rechnet pro Player den persistierten Trim auf eine LMS-Lautstärke hoch.
+/// Beobachtet den Mute-Status des Default-Render-Endpoints und spiegelt ihn
+/// auf aktive LMS-Player. Die Player-Lautstärke selbst ist ein direkter
+/// LMS-Wert; Windows-Prozent wird nicht zusätzlich eingerechnet, weil der
+/// Loopback-Stream bereits mit Windows-Pegel aufgezeichnet wird.
 /// LMS-direkte Lautstärke-Änderungen werden vom <see cref="ILmsClient"/>
-/// reportet; daraus rechnet der Service den Trim zurück.
+/// reportet und als direkter Player-Wert persistiert.
 /// </summary>
 public sealed class WindowsVolumeService : IVolumeService, IDisposable
 {
@@ -21,6 +23,7 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
     private MMDevice? _device;
     private AudioEndpointVolume? _endpointVolume;
     private int _systemPercent;
+    private bool _systemMuted;
 
     public WindowsVolumeService(ISettingsService settings, ILmsClient lms, ILogger<WindowsVolumeService> log)
     {
@@ -34,6 +37,7 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
             _endpointVolume = _device.AudioEndpointVolume;
             _endpointVolume.OnVolumeNotification += OnSystemVolumeChanged;
             _systemPercent = (int)Math.Round(_endpointVolume.MasterVolumeLevelScalar * 100);
+            _systemMuted = _endpointVolume.Mute;
         }
         catch (Exception ex)
         {
@@ -48,6 +52,7 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
     private void OnSystemVolumeChanged(AudioVolumeNotificationData data)
     {
         _systemPercent = (int)Math.Round(data.MasterVolume * 100);
+        _systemMuted = data.Muted;
         _ = ApplyAllAsync();
     }
 
@@ -55,28 +60,24 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
     {
         var model = _settings.Current;
         var entry = model.Players.FirstOrDefault(p => p.Id == e.PlayerId);
-        if (entry is null || !entry.AppControlsVolume) return;
+        if (entry is null || _systemMuted) return;
 
-        var newTrim = VolumeMath.RecoverTrim(e.Volume, _systemPercent);
-        if (newTrim != entry.TrimPercent)
+        var newVolume = VolumeMath.ClampVolume(e.Volume);
+        if (newVolume != entry.TrimPercent)
         {
-            entry.TrimPercent = newTrim;
+            entry.TrimPercent = newVolume;
             _settings.NotifyChanged();
         }
     }
 
-    public async Task SetTrimAsync(string playerId, int trimPercent, CancellationToken ct = default)
+    public async Task SetTrimAsync(string playerId, int volumePercent, CancellationToken ct = default)
     {
-        var trim = VolumeMath.ClampTrim(trimPercent);
+        var volume = VolumeMath.ClampVolume(volumePercent);
         var entry = EnsurePlayerEntry(playerId);
-        entry.TrimPercent = trim;
+        entry.TrimPercent = volume;
         _settings.NotifyChanged();
 
-        if (entry.AppControlsVolume)
-        {
-            var effective = VolumeMath.EffectiveVolume(_systemPercent, trim);
-            await _lms.SetVolumeAsync(playerId, effective, ct).ConfigureAwait(false);
-        }
+        await _lms.SetVolumeAsync(playerId, TargetVolume(volume), ct).ConfigureAwait(false);
     }
 
     public async Task SetAppControlAsync(string playerId, bool enabled, CancellationToken ct = default)
@@ -87,7 +88,7 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
 
         if (enabled)
         {
-            var effective = VolumeMath.EffectiveVolume(_systemPercent, entry.TrimPercent);
+            var effective = TargetVolume(entry.TrimPercent);
             await _lms.SetVolumeAsync(playerId, effective, ct).ConfigureAwait(false);
         }
     }
@@ -95,9 +96,9 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
     public async Task ApplyAllAsync(CancellationToken ct = default)
     {
         var model = _settings.Current;
-        foreach (var p in model.Players.Where(p => p.AppControlsVolume))
+        foreach (var p in model.Players.Where(p => p.IsEnabled && p.InActiveSyncGroup && !p.IsLocalDevice))
         {
-            var effective = VolumeMath.EffectiveVolume(_systemPercent, p.TrimPercent);
+            var effective = TargetVolume(p.TrimPercent);
             try
             {
                 await _lms.SetVolumeAsync(p.Id, effective, ct).ConfigureAwait(false);
@@ -120,6 +121,9 @@ public sealed class WindowsVolumeService : IVolumeService, IDisposable
         }
         return entry;
     }
+
+    private int TargetVolume(int volumePercent)
+        => _systemMuted ? 0 : VolumeMath.ClampVolume(volumePercent);
 
     public void Dispose()
     {

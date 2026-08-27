@@ -14,6 +14,7 @@ public sealed class StreamPipelineCoordinator : IAsyncDisposable
     private readonly IAudioCapture _capture;
     private readonly IStreamServer _server;
     private readonly ILmsClient _lms;
+    private readonly IVolumeService _volume;
     private readonly IDlnaService _dlna;
     private readonly IAirPlaySender _airPlay;
     private readonly ISettingsService _settings;
@@ -29,6 +30,7 @@ public sealed class StreamPipelineCoordinator : IAsyncDisposable
         IAudioCapture capture,
         IStreamServer server,
         ILmsClient lms,
+        IVolumeService volume,
         IDlnaService dlna,
         IAirPlaySender airPlay,
         ISettingsService settings,
@@ -38,6 +40,7 @@ public sealed class StreamPipelineCoordinator : IAsyncDisposable
         _capture = capture;
         _server = server;
         _lms = lms;
+        _volume = volume;
         _dlna = dlna;
         _airPlay = airPlay;
         _settings = settings;
@@ -89,6 +92,7 @@ public sealed class StreamPipelineCoordinator : IAsyncDisposable
             var url = _server.StreamUrl?.ToString();
             if (!string.IsNullOrEmpty(url))
             {
+                await _volume.ApplyAllAsync(ct).ConfigureAwait(false);
                 await ApplyToActiveSyncGroupAsync(url, ct).ConfigureAwait(false);
                 await StartActiveDlnaRenderersAsync(url, ct).ConfigureAwait(false);
             }

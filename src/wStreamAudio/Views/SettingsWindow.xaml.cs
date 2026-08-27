@@ -169,19 +169,13 @@ public sealed partial class SettingsWindow : Window
 
             // Schließen des Hauptfensters = App beenden. Mini-/About-Fenster, Tray und
             // alle laufenden Streams werden über ShutdownAsync sauber abgeräumt.
-            var uiQueue = App.Instance?.UiQueue;
             _ = Task.Run(async () =>
             {
                 try { if (App.Instance is not null) await App.Instance.ShutdownAsync().ConfigureAwait(false); }
                 catch (Exception ex) { AppLogger.Write(ex); }
                 finally
                 {
-                    // Exit() muss auf dem UI-Thread laufen, sonst hängen die noch
-                    // existierenden Fenster-Threads weiter.
-                    uiQueue?.TryEnqueue(() =>
-                    {
-                        try { Microsoft.UI.Xaml.Application.Current.Exit(); } catch { /* schon beim Beenden */ }
-                    });
+                    App.Instance?.RequestExitOnUiThread();
                 }
             });
         }

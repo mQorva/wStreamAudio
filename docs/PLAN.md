@@ -1,108 +1,167 @@
-# wStreamAudio — Roadmap & Stand
+# wStreamAudio - Roadmap und Ist-Stand
 
-Stand: 2026-05-10. Dieses Dokument ist die Wahrheit über den Ist-Zustand der App.
-Die [README.md](../README.md) beschreibt das **Ziel**, nicht den Stand.
+Stand: 2026-06-05. Dieses Dokument beschreibt den technischen Ist-Stand der
+App. Die [README.md](../README.md) ist die kurze Nutzer- und Build-Doku.
 
-> Vorgeschichte: Das Projekt hieß zunächst **wAirPlay** und wurde dann auf
-> **wStreamAudio** umbenannt, als klar wurde, dass nicht nur AirPlay-, sondern
-> auch DLNA- und Squeeze-Player adressiert werden sollen. Der ursprüngliche
-> Plan stammt aus der Chat-Session, mit der das Projekt aus dem Magic-Voice-
-> Pattern abgeleitet wurde — dieses Dokument fasst ihn nachträglich zusammen.
+## Kurzfazit
 
-## Architektur (Ist)
+wStreamAudio ist aktuell eine WinUI-3-Tray-App für lokalen LAN-Audiostream.
+Der stabile Hauptpfad ist:
 
-```
-Windows-Audio-Endpoints
-    └─► WASAPI-Loopback (IAudioCapture, NAudio-frei)
-            └─► PCM-Frames (16-bit interleaved, ggf. resampled)
-                    └─► HttpStreamServer  ── PCM-WAV ──► LMS
-                                                          └─► echte Squeeze-Player
-                                                ── direkt ──► DLNA-Renderer (SSDP/AVTransport)
-                                                ── direkt ──► AirPlay-Empfänger (mDNS)
+1. Windows-Render-Endpoint per WASAPI-Loopback aufnehmen.
+2. Audio intern als Stereo-16-bit-PCM verarbeiten.
+3. Per HTTP als MP3-Live-Stream unter `/stream.mp3` bereitstellen.
+4. LMS/Squeezebox, DLNA-Renderer und AirPlay-1-Empfänger aus der App heraus
+   ansteuern.
+
+Sample-genaue Synchronität gilt nur innerhalb der LMS/Squeezebox-Sync-Gruppe.
+DLNA und AirPlay werden direkt angesprochen und laufen unabhängig.
+
+## Architektur
+
+```text
+Windows-Render-Endpoints
+    -> WasapiLoopbackSource (NAudio)
+       -> Downmix auf Stereo, 16-bit-PCM
+       -> HttpStreamServer
+          -> MP3 128 kbit/s CBR, pro HTTP-Client eigener LAME-Encoder
+          -> /stream.mp3
+             -> LMS / Squeezebox-Player
+             -> DLNA/UPnP-Renderer
+       -> RaopSender
+          -> AirPlay 1 / RAOP via RTSP + RTP
 ```
 
 Steuerung:
-- LMS-JSON-RPC für Player-Status, Volume, Sync, Power, Play.
-- Tray-Icon (Win32 Shell_NotifyIcon) als einziger UI-Anker, Quick-Popup +
-  Settings-Window als WinUI-3-Fenster.
-- System-Lautstärke ↔ Player-Volume optional gekoppelt.
 
-## Status pro Feature
+- LMS per JSON-RPC (`serverstatus`, `power`, `mixer volume`, `sync`,
+  `playlist play`, `pause`, `stop`)
+- DLNA per SSDP-Discovery und UPnP-AVTransport/RenderingControl
+- AirPlay per mDNS-Discovery und AirPlay-1/RAOP-Sender
+- Tray-Icon per Win32 `Shell_NotifyIcon`
+- WinUI-3-Fenster für Mini-Fenster, Einstellungen und Über-Dialog
+- Settings-Persistenz mit Debounce und atomischem Replace
 
-Legende: ✅ fertig · 🟡 funktioniert eingeschränkt · ❌ Stub / fehlt
+## Status pro Bereich
 
-### Capture & Streaming
+Legende: fertig, eingeschränkt, offen, bewusst nicht geplant
+
+### Capture und Streaming
+
 | Feature | Status | Hinweis |
 |---|---|---|
-| WASAPI-Endpoint-Loopback (Default/SPDIF/HDMI) | ✅ | `WasapiLoopbackSource`, `WindowsAudioEndpointCatalog` |
-| Per-App-Capture (Process Loopback) | 🟡 | Modell vorhanden; tatsächliche WASAPI-Process-Loopback-Implementierung muss noch geprüft werden |
-| Capture-Profile-Editor | ✅ | Dialog für Modus, Endpoint, Prozess, Sample-Rate, Kompression |
-| HTTP-Live-Stream | ✅ | TCP-Listener, multi-client |
-| **FLAC-Encoder** | ⛔ bewusst weggelassen | Im LAN sind die ~1,4 Mbit/s eines PCM-WAV-Streams kein Problem; LMS spielt WAV nativ. FLAC-Encoder + `libFLAC.dll`-Abhängigkeit + per-Client-Encoding wurden geprüft und wieder entfernt, weil der Nutzen den Aufwand nicht rechtfertigt. Falls jemals Bandbreite eng wird, ist der Re-Add eine kleine Übung. |
-| Resampler | 🟡 | rudimentär; zu prüfen, ob 48k-Quellen sauber zu 44.1k-LMS-Konfig laufen |
+| WASAPI-Endpoint-Loopback | fertig | `WasapiLoopbackSource`, `WindowsAudioEndpointCatalog` |
+| Default-Endpoint folgen | fertig | Profil kann dem Windows-Default folgen |
+| Konkreter Endpoint, z. B. SPDIF/HDMI | fertig | kein Default-Wechsel nötig |
+| Mehrkanal-Downmix auf Stereo | fertig | ITU-ähnlicher Downmix, LFE ignoriert |
+| Keep-Alive bei Stille | fertig | Silence-Timer hält HTTP-Clients offen |
+| Capture-Pegel | fertig | gedrosselte Level-Events für UI |
+| HTTP-Live-Stream | fertig | TCP-Listener, mehrere Clients |
+| MP3-Encoding | fertig | 128 kbit/s CBR, LAME pro Client |
+| Stream-URL | fertig | `http://<lokale-IP>:<Port>/stream.mp3` |
+| DLNA-Prebuffer | fertig | `?buf=<ms>` sendet anfängliche Stille |
+| Per-App-Capture | offen | Modell/UI vorhanden, Runtime unterstützt nur Endpoint-Loopback |
+| Ziel-Samplerate aus Profil | eingeschränkt | Capture nutzt aktuell das WASAPI-Mixformat; AirPlay resampelt intern einfach auf 44,1 kHz |
+| FLAC/WAV als HTTP-Format | bewusst nicht geplant | MP3 ist der aktuelle Kompatibilitätspfad für LMS und DLNA |
 
-### LMS-Anbindung
+### LMS / Squeezebox
+
 | Feature | Status | Hinweis |
 |---|---|---|
-| LMS-JSON-RPC-Client | ✅ | `slim.request` mit `serverstatus`, `power`, `mixer volume`, `sync`, `playlist play`, `pause`, `stop` |
-| Verbindungstest | ✅ | inkl. Host-Bereinigung (Schema/Pfad/Port aus Eingabe) und Fehlermeldung im UI |
-| mDNS-Auto-Discovery | 🟡 | Setting `AutoDiscover` existiert, aber kein konkreter mDNS-Listener — nur manueller Host gilt aktuell |
-| Player-Volume-Subscribe | 🟡 | `RaiseVolumeChanged` existiert, aber kein Polling/Subscribe-Loop, der das Event füllt |
+| LMS-JSON-RPC-Client | fertig | typed `HttpClient`, BaseAddress aus Settings |
+| Verbindungstest | fertig | TCP-Test plus `POST /jsonrpc.js` |
+| Player laden | fertig | `serverstatus` mit Persistenz/Sortierung |
+| Sync-Gruppe | fertig | erster aktiver Player wird Master |
+| Stream starten/stoppen | fertig | `playlist play`, `pause`, `stop` |
+| Lautstärke setzen | fertig | `mixer volume` |
+| Bridge-Erkennung in LMS-Namen | eingeschränkt | einfache Namenserkennung für AirPlay/UPnP-Bridges |
+| LMS-Auto-Discovery | offen | Setting existiert, kein mDNS-Listener für LMS implementiert |
+| Externe Volume-Änderungen live übernehmen | offen | Event existiert, Polling/Subscribe-Loop fehlt |
 
-### UI / Bedienung
+### DLNA / UPnP
+
 | Feature | Status | Hinweis |
 |---|---|---|
-| Tray-Icon (Linksklick = Popup, Rechtsklick = Menü) | ✅ | nativer Shell_NotifyIcon |
-| Quick-Popup mit Stream-Toggle, Profil, Player-Liste | ✅ | |
-| Quick-Popup-Position relativ zum Tray | 🟡 | aktuell pauschal „rechts unten am Primärbildschirm"; DPI-genaue Tray-Anker-Position fehlt |
-| Settings-Window (NavigationView) | ✅ | Allgemein, Audio-Quelle, Dienste, Streaming, Über |
-| Multiroom-Sync per Toggle pro Player | ✅ | Popup-Toggle ruft live `_lms.SyncAsync` / `UnsyncAsync` |
-| Pro-Player-Trim („App steuert Lautstärke") | 🟡 | Settings-Modell + `VolumeMath` da, in Streaming-Page als Checkbox sichtbar; Popup zeigt nur den Lautstärke-Slider |
-| Lokalisierung (de/en) | ❌ bewusst zurückgestellt | Sprache-Combobox in der Settings-Page ist deaktiviert mit Hinweis. Echte Lokalisierung würde Resource-Files (.resw) erfordern — erst sinnvoll, wenn die UI-Strings stabil sind |
-| Theme-Umschalter (System/Hell/Dunkel) | ✅ | `ThemeService.ApplyTo` setzt `RequestedTheme` auf der Window-Root; bei Umschalten in der Page werden alle offenen Fenster sofort aktualisiert |
+| SSDP-Discovery | fertig | sucht `MediaRenderer:1` |
+| Gerätebeschreibung laden | fertig | findet auch verschachtelte MediaRenderer |
+| Wiedergabe starten | fertig | `SetAVTransportURI` + `Play` |
+| Wiedergabe stoppen | fertig | `Stop` |
+| Lautstärke setzen/lesen | fertig | `RenderingControl` falls vorhanden |
+| Prebuffer-Hint | fertig | MP3-Stille am Stream-Anfang |
+| Sample-Sync mit LMS | bewusst nicht geplant | direkter DLNA-Pfad ist eigenständig |
 
-### Direkte Geräte-Steuerung
+### AirPlay
+
 | Feature | Status | Hinweis |
 |---|---|---|
-| DLNA-Renderer-Discovery (SSDP) | ✅ | `DlnaService.DiscoverRenderersAsync` |
-| DLNA-Wiedergabe via AVTransport | ✅ | `DlnaService` (frühere LMS-to-uPnP-Bridge ist damit überflüssig) |
-| AirPlay-Empfänger-Discovery (mDNS) | ✅ | `AirPlayDiscovery` (frühere AirConnect-Bridge ist damit überflüssig) |
-| AirPlay-Wiedergabe-Sender | ❌ | in Vorbereitung — UI zeigt Liste, Stream-Pfad folgt |
+| mDNS-Discovery | fertig | `_raop._tcp` und `_airplay._tcp`, Audio-Filter |
+| AirPlay-1/RAOP-Sender | eingeschränkt | RTSP/RTP, AES-CBC, L16 44,1 kHz |
+| AirPlay-Lautstärke | eingeschränkt | `SET_PARAMETER volume` |
+| AirPlay 2 | bewusst nicht geplant | kein Pairing/PTP/Curve25519/SRP |
+| HomePod/Apple TV | eingeschränkt | Discovery möglich, direkter RAOP-Stream nicht garantiert |
+| Retransmission/Control-Port | offen | Requests werden nicht nachgeliefert |
+| Robuster Resampler | offen | aktuell einfache lineare Umrechnung auf 44,1 kHz |
 
-### App-Lifecycle / System
+### UI und Bedienung
+
 | Feature | Status | Hinweis |
 |---|---|---|
-| Single-Instance via Named Pipe | ✅ | zweite Instanz signalisiert Popup-Show |
-| Autostart | ✅ | Registry-basierter `WindowsAutostartService` |
-| `LaunchMinimizedToTray` | ✅ | beim Start ausgewertet (Default jetzt false → Settings-Fenster sichtbar) |
-| Settings-Persistenz mit Debounce | ✅ | atomisches Replace via `.tmp` |
-| Crash-Logging | ✅ | `StartupCrashLogger` |
-| Firewall-Regel für Stream-Port | 🟡 | Setting `SetFirewallRule` existiert; tatsächliche Regel-Anlage noch nicht verifiziert |
+| Tray-Icon | fertig | Linksklick Mini-Fenster, Rechtsklick Kontextmenü |
+| Mini-Fenster | fertig | Play/Pause, Pin, Schließen, Playerliste, Pegel |
+| Mini-Fenster-Position | fertig | Position wird persistiert; Tray-Anker ist weiterhin grob |
+| Settings-Fenster | fertig | Allgemein, Audio-Quelle, Dienste, Streaming, Über |
+| Capture-Profil-Editor | fertig | Endpoint und vorbereitete Per-App-Felder |
+| Gemeinsame Renderer-Karten | fertig | LMS, DLNA und AirPlay nutzen ein Template |
+| Sortierung per Drag & Drop | fertig | Persistenz über `SortOrder` |
+| Theme-Umschalter | fertig | System/Hell/Dunkel, live auf offene Fenster |
+| Sprache Deutsch/Englisch | eingeschränkt | zentrale `Strings`-Klasse, keine `.resw`-Lokalisierung |
+| Deutsche UI-Texte | eingeschränkt | viele Texte zentralisiert, XAML enthält noch feste Texte |
 
-## Phasen / Priorisierung
+### App-Lifecycle und System
 
-### Phase 1 — bereits geliefert
-Alles mit ✅. Reicht für: System-Audio in den LMS streamen, dort Player-Sync,
-Tray-Bedienung, direkte DLNA-Wiedergabe.
+| Feature | Status | Hinweis |
+|---|---|---|
+| Single-Instance | fertig | Named Pipe, zweite Instanz öffnet Mini-Fenster |
+| Autostart | fertig | Registry-basierter Windows-Autostart |
+| Start minimiert ins Tray | fertig | `LaunchMinimizedToTray` |
+| Wiedergabe fortsetzen | fertig | `ResumePlaybackOnStart` + `WasStreamingAtExit` |
+| Settings-Persistenz | fertig | Debounce, atomisches Replace |
+| Fensterpositionen | fertig | Settings-Fenster und Mini-Fenster |
+| Crash-Logging | fertig | `%LOCALAPPDATA%\wStreamAudio\logs\` |
+| Firewall-Regel | eingeschränkt | `netsh` elevated, pro App-Session nur einmal |
 
-### Phase 2 — kurzfristig nächste
-1. **App-Volume-Trim im Popup**: Toggle „App steuert Lautstärke" pro Player im
-   Quick-Popup, zusätzlich zum Slider.
-2. **Quick-Popup-Position**: Tray-Anker via `Shell_NotifyIconGetRect` und
-   DPI-Korrektur (aktuell: rechts unten am Primärbildschirm mit kleinem Abstand).
-3. **AirPlay-Sender** vollständig implementieren (RTSP/RAOP-Pfad).
+### Build, Installer und Release
 
-### Phase 3 — mittelfristig
-6. **mDNS-Auto-Discovery für LMS** (`_slimproto._tcp` und `_lms._tcp`).
-7. **Player-Volume-Subscribe-Loop**, damit externe Volume-Änderungen ins UI
-   kommen (LMS-Subscribe oder Polling alle 2 s).
-8. **Lokalisierung** (Resource-Files de/en).
-9. **Theme live anwenden**.
-10. **Firewall-Rule-Anlage** verifizieren / robust machen.
+| Feature | Status | Hinweis |
+|---|---|---|
+| Zentrale Version | fertig | `Directory.Build.props` mit `AppVersion` |
+| Build-Skript | fertig | `dotnet publish`, XAML-Artefakte, optional Inno Setup |
+| Install-Skript | fertig | Runtime-Prüfung, Update, Startmenü-Link |
+| Uninstall-Skript | fertig | App entfernen, optional Nutzerdaten |
+| Inno-Setup-Projekt | fertig | `installer/wStreamAudio.iss` |
+| GitHub-Sync | fertig | `Sync-GitHub.ps1`, optional Release-Upload |
 
-### Phase 4 — Nice-to-have
-- Statistik im Popup (Bitrate, Bufferzustand, Client-Anzahl).
-- Eigenes Capture-Format-Profil pro Player (z.B. ein Player will 16-Bit,
-  ein anderer 24-Bit).
-- Tray-Notification, wenn LMS-Verbindung verloren geht.
+## Priorisierung
 
+### Kurzfristig
+
+1. Per-App-Capture entweder vollständig implementieren oder in der UI klar als
+   noch nicht verfügbar sperren.
+2. AirPlay-Hinweise in der UI auf AirPlay 1/RAOP korrigieren.
+3. Robusteren Resampler für AirPlay und optionale Ziel-Samplerate einbauen.
+4. LMS-Auto-Discovery wirklich implementieren oder das Setting entfernen.
+
+### Danach
+
+1. Player-Volume-Polling oder LMS-Subscribe-Loop, damit externe Änderungen live
+   ins Mini-Fenster kommen.
+2. Tray-Anker-Position über `Shell_NotifyIconGetRect` DPI-genau setzen.
+3. Firewall-Regel mit besserem Statusfeedback im UI anzeigen.
+4. XAML-Resttexte weiter in `Strings` zentralisieren.
+
+### Nice-to-have
+
+- Stream-Statistik im Mini-Fenster: Clients, Bitrate, Buffer, aktuelle URL.
+- Diagnose-Seite für LMS/DLNA/AirPlay mit letzten Fehlern.
+- Optionales alternatives HTTP-Format, falls konkrete Geräte MP3 ablehnen.
+- Mehr Tests für Settings-Migrationen, Stream-Header und LMS-Adressbereinigung.

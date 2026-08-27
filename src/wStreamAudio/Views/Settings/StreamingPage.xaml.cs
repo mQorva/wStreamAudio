@@ -251,8 +251,6 @@ public sealed partial class StreamingPage : Page
     private void Load()
     {
         _suppress = true;
-        var s = _settings.Current.Streaming;
-        FollowVolToggle.IsOn = s.PlayersFollowSystemVolume;
 
         RebuildPlayerList();
         PlayersList.ItemsSource = _items;
@@ -522,7 +520,7 @@ public sealed partial class StreamingPage : Page
             item.PropertyChanged += (_, ev) => UpdateDlnaItem(item, ev.PropertyName);
             _dlnaItems.Add(item);
 
-            // Aktuelle Lautstärke beim Renderer abfragen und in einen Trim-Wert umrechnen,
+            // Aktuelle Lautstärke beim Renderer abfragen,
             // damit der Slider beim Öffnen den realen Stand zeigt — und ein Klick darauf
             // nicht zu einem Lautstärke-Sprung führt.
             var renderer = BuildRendererFrom(r);
@@ -536,16 +534,13 @@ public sealed partial class StreamingPage : Page
         {
             var current = await _dlna.GetVolumeAsync(renderer).ConfigureAwait(true);
             if (current is null) return;
-            // absolute → relativ: trim = current / system × 100
-            var sys = Math.Max(1, _volume.SystemVolumePercent);
-            var trim = (int)Math.Round(current.Value * 100.0 / sys);
-            trim = Math.Clamp(trim, 0, 100);
+            var volume = Math.Clamp(current.Value, 0, 100);
             _suppress = true;
-            try { item.VolumePercent = trim; }
+            try { item.VolumePercent = volume; }
             finally { _suppress = false; }
             // Persistierten Wert auch aktualisieren, damit beim Neustart der Slider passt.
             var entry = _settings.Current.DlnaRenderers.FirstOrDefault(d => d.Udn == item.Udn);
-            if (entry is not null) entry.VolumePercent = trim;
+            if (entry is not null) entry.VolumePercent = volume;
         }
         catch (Exception ex) { AppLogger.Write(ex); }
     }
@@ -561,15 +556,13 @@ public sealed partial class StreamingPage : Page
         entry.VolumePercent = item.VolumePercent;
         _settings.NotifyChanged();
 
-        // Lautstärke an den Renderer schicken: trim × system / 100 (analog zu Squeeze-Playern).
+        // Lautstärke an den Renderer schicken: Sliderwert ist direkte Renderer-Lautstärke.
         if (prop == nameof(DlnaRendererItem.VolumePercent))
         {
             var renderer = BuildRendererFrom(entry);
             if (renderer is not null)
             {
-                var sys = _volume.SystemVolumePercent;
-                var absolute = Math.Clamp((int)Math.Round(item.VolumePercent * sys / 100.0), 0, 100);
-                _ = _dlna.SetVolumeAsync(renderer, absolute);
+                _ = _dlna.SetVolumeAsync(renderer, Math.Clamp(item.VolumePercent, 0, 100));
             }
         }
 
@@ -823,7 +816,14 @@ public sealed partial class StreamingPage : Page
     {
         var url = _pipeline.StreamUrl?.ToString();
         if (string.IsNullOrEmpty(url)) return;
-        try { await _lms.PlayUrlAsync(playerId, url).ConfigureAwait(true); }
+        try
+        {
+            var entry = _settings.Current.Players.FirstOrDefault(p => p.Id == playerId);
+            if (entry is not null)
+                await _volume.SetTrimAsync(playerId, entry.TrimPercent).ConfigureAwait(true);
+
+            await _lms.PlayUrlAsync(playerId, url).ConfigureAwait(true);
+        }
         catch (Exception ex) { AppLogger.Write(ex); }
     }
 
@@ -916,18 +916,10 @@ public sealed partial class StreamingPage : Page
             }
         }
 
-        // Slider-Änderung an LMS senden (System-Volume-Kopplung beachten).
+        // Slider-Änderung direkt an LMS senden. Windows-Mute wird im Volume-Service separat gespiegelt.
         if (propertyName is null or nameof(PlayerSettingsItem.TrimPercent))
         {
-            if (_settings.Current.Streaming.PlayersFollowSystemVolume)
-            {
-                _ = _volume.SetTrimAsync(item.Id, item.TrimPercent);
-            }
-            else
-            {
-                var absolute = Math.Clamp(item.TrimPercent, 0, 100);
-                _ = _lms.SetVolumeAsync(item.Id, absolute);
-            }
+            _ = _volume.SetTrimAsync(item.Id, item.TrimPercent);
             _bus.RaisePlayerChanged(new PlayerChangedEventArgs
             {
                 PlayerId = item.Id,
@@ -935,13 +927,6 @@ public sealed partial class StreamingPage : Page
                 Volume = item.TrimPercent,
             });
         }
-    }
-
-    private void FollowVolToggle_Toggled(object sender, RoutedEventArgs e)
-    {
-        if (_suppress) return;
-        _settings.Current.Streaming.PlayersFollowSystemVolume = FollowVolToggle.IsOn;
-        _settings.NotifyChanged();
     }
 
     private void ForgetPlayer_Click(object sender, RoutedEventArgs e)

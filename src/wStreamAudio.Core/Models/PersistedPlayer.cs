@@ -16,10 +16,10 @@ public sealed class PersistedPlayer
     /// <summary>Optional vom Nutzer überschriebener Anzeigename.</summary>
     public string? CustomName { get; set; }
 
-    /// <summary>Wenn true, kontrolliert wStreamAudio die Lautstärke dieses Players via Trim.</summary>
+    /// <summary>Legacy-Flag aus der früheren Systemlautstärke-Kopplung.</summary>
     public bool AppControlsVolume { get; set; }
 
-    /// <summary>Trim in Prozent (0–150). Multipliziert mit System-Lautstärke.</summary>
+    /// <summary>Direkte LMS-Lautstärke in Prozent. Name bleibt wegen Settings-Kompatibilität.</summary>
     public int TrimPercent { get; set; } = Defaults.PlayerTrimDefault;
 
     /// <summary>UTC-Zeitstempel des letzten Online-Sichtens (für UI-Anzeige).</summary>

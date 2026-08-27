@@ -25,11 +25,9 @@ public sealed class TrayIconController : IDisposable
     private const uint NimAdd = 0x00000000;
     private const uint NimModify = 0x00000001;
     private const uint NimDelete = 0x00000002;
-    private const uint NimSetVersion = 0x00000004;
     private const uint NifMessage = 0x00000001;
     private const uint NifIcon = 0x00000002;
     private const uint NifTip = 0x00000004;
-    private const uint NotifyIconVersion4 = 4;
     private const uint ImageIcon = 1;
     private const uint LrLoadFromFile = 0x00000010;
     private const uint LrDefaultSize = 0x00000040;
@@ -99,7 +97,6 @@ public sealed class TrayIconController : IDisposable
             szTip = TrimTooltip(_pipeline.IsStreaming
                 ? $"{_profile.AppName} — Stream aktiv"
                 : $"{_profile.AppName} — bereit"),
-            uVersionOrTimeout = NotifyIconVersion4,
         };
 
         if (!Shell_NotifyIcon(message, ref data))
@@ -107,11 +104,6 @@ public sealed class TrayIconController : IDisposable
             _log.LogWarning("Shell_NotifyIcon({Message}) fehlgeschlagen: {Error}", message, Marshal.GetLastWin32Error());
             DestroyIconIfOwned(newIcon, ownsNewIcon);
             return;
-        }
-
-        if (message == NimAdd && !Shell_NotifyIcon(NimSetVersion, ref data))
-        {
-            _log.LogWarning("Shell_NotifyIcon(NIM_SETVERSION) fehlgeschlagen: {Error}", Marshal.GetLastWin32Error());
         }
 
         DestroyIconIfOwned(_icon, _ownsIcon);
@@ -283,7 +275,10 @@ public sealed class TrayIconController : IDisposable
         if (Microsoft.UI.Xaml.Application.Current is App app)
         {
             await app.ShutdownAsync().ConfigureAwait(false);
+            app.RequestExitOnUiThread();
+            return;
         }
+
         Microsoft.UI.Xaml.Application.Current.Exit();
     }
 

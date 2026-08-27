@@ -1,6 +1,6 @@
 #define AppName "wStreamAudio"
 #ifndef AppVersion
-#define AppVersion "0.1.0"
+#define AppVersion "0.2.4"
 #endif
 #ifndef SourceDir
 #define SourceDir "..\artifacts\release\wStreamAudio"
@@ -13,10 +13,10 @@
 AppId={{A289F143-2BA9-4E84-9ADE-D62EE17B8522}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppPublisher=Ronny Schulz
-AppPublisherURL=https://github.com/CannonRS/wStreamAudio
-AppSupportURL=https://github.com/CannonRS/wStreamAudio/issues
-AppUpdatesURL=https://github.com/CannonRS/wStreamAudio/releases
+AppPublisher=mQorva
+AppPublisherURL=https://github.com/mQorva/wStreamAudio
+AppSupportURL=https://github.com/mQorva/wStreamAudio/issues
+AppUpdatesURL=https://github.com/mQorva/wStreamAudio/releases
 DefaultDirName={localappdata}\Programs\wStreamAudio
 DefaultGroupName=wStreamAudio
 DisableDirPage=yes
@@ -35,7 +35,7 @@ CloseApplications=yes
 CloseApplicationsFilter=wStreamAudio.exe
 RestartApplications=no
 VersionInfoVersion={#AppVersion}.0
-VersionInfoCompany=Ronny Schulz
+VersionInfoCompany=mQorva
 VersionInfoDescription=wStreamAudio Installer
 VersionInfoProductName=wStreamAudio
 VersionInfoProductVersion={#AppVersion}
@@ -61,3 +61,25 @@ Filename: "{app}\wStreamAudio.exe"; Description: "wStreamAudio starten"; Flags: 
 [UninstallRun]
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Get-Process -Name 'wStreamAudio' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"""; Flags: runhidden; RunOnceId: "StopWStreamAudio"
 Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -Command ""Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' -Name 'wStreamAudio' -ErrorAction SilentlyContinue"""; Flags: runhidden; RunOnceId: "RemoveWStreamAudioAutostart"
+
+[Code]
+function StopWStreamAudioBeforeInstall(): Boolean;
+var
+  ResultCode: Integer;
+begin
+  Exec(
+    'powershell.exe',
+    '-NoProfile -ExecutionPolicy Bypass -Command "Get-Process -Name ''wStreamAudio'' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue"',
+    '',
+    SW_HIDE,
+    ewWaitUntilTerminated,
+    ResultCode);
+
+  Result := True;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  StopWStreamAudioBeforeInstall();
+  Result := '';
+end;

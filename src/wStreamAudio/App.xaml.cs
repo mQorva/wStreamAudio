@@ -75,13 +75,14 @@ public sealed partial class App : Application
             if (!single.IsFirstInstance)
             {
                 AppLogger.WriteMessage("OnLaunched: zweite Instanz — versuche laufende zu signalisieren");
-                var delivered = await single.SignalRunningInstanceAsync("show-popup").ConfigureAwait(false);
+                var delivered = await single.SignalRunningInstanceAsync("show-settings").ConfigureAwait(false);
                 if (delivered)
                 {
                     // Sichtbares Feedback liefert die laufende Instanz selbst — sie hat auf das
-                    // Signal hin das Mini-Fenster geöffnet. Kein Bedarf für eine zusätzliche Box.
-                    AppLogger.WriteMessage("OnLaunched: Signal angekommen — Mini-Fenster hochgefahren, diese Instanz beendet sich");
-                    Exit();
+                    // Signal hin das Einstellungsfenster geöffnet. Kein Bedarf für eine zusätzliche Box.
+                    AppLogger.WriteMessage("OnLaunched: Signal angekommen — Einstellungen hochgefahren, diese Instanz beendet sich");
+                    await DisposeServicesAsync().ConfigureAwait(false);
+                    RequestExitOnUiThread();
                     return;
                 }
                 // Laufende Instanz reagiert nicht (Zombie/hängt) — wir übernehmen statt zu verschwinden.
@@ -150,12 +151,45 @@ public sealed partial class App : Application
         catch (Exception ex)
         {
             AppLogger.Write(ex);
-            Exit();
+            await DisposeServicesAsync().ConfigureAwait(false);
+            RequestExitOnUiThread();
+        }
+    }
+
+    public void RequestExitOnUiThread()
+    {
+        var queue = _uiQueue;
+        if (queue is not null)
+        {
+            queue.TryEnqueue(() =>
+            {
+                try { Exit(); } catch { /* Exit kann beim App-Abbau bereits laufen. */ }
+            });
+            return;
+        }
+
+        try { Exit(); } catch { /* Exit kann beim App-Abbau bereits laufen. */ }
+    }
+
+    private async Task DisposeServicesAsync()
+    {
+        var services = _services;
+        _services = null;
+        if (services is not null)
+        {
+            try { await services.DisposeAsync().ConfigureAwait(false); }
+            catch (Exception ex) { AppLogger.Write(ex); }
         }
     }
 
     private void OnSecondInstanceCommand(object? sender, string command)
     {
+        if (string.Equals(command, "show-settings", StringComparison.OrdinalIgnoreCase))
+        {
+            ShowSettingsWindow();
+            return;
+        }
+
         if (string.Equals(command, "show-popup", StringComparison.OrdinalIgnoreCase))
         {
             _ = ShowQuickPopupAsync();
@@ -286,7 +320,7 @@ public sealed partial class App : Application
         catch (Exception ex) { AppLogger.Write(ex); }
 
         _tray?.Dispose();
-        if (_services is not null) await _services.DisposeAsync().ConfigureAwait(false);
+        await DisposeServicesAsync().ConfigureAwait(false);
     }
 
     /// <summary>Schließt Mini, About und Settings auf dem UI-Thread. Awaitet, bis fertig.</summary>

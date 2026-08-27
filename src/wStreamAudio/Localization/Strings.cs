@@ -89,10 +89,6 @@ public static class Strings
         : "wStreamAudio listens on this port — LMS pulls the audio stream from here.";
     public static string FirewallHeader => De ? "Firewall-Regel automatisch setzen" : "Set firewall rule automatically";
     public static string FirewallDesc => De ? "Eingehender TCP-Port für LMS — UAC erforderlich." : "Inbound TCP port for LMS — requires UAC.";
-    public static string FollowVolHeader => De ? "Player folgen System-Lautstärke" : "Players follow system volume";
-    public static string FollowVolDesc => De
-        ? "Master-Schalter für die Trim-basierte Lautstärke-Kopplung."
-        : "Master switch for trim-based volume coupling.";
     public static string LevelHeader => De ? "Audio-Pegel (Capture)" : "Audio level (capture)";
     public static string LevelDesc => De
         ? "Spitzenpegel der laufenden Aufnahme. Bewegt sich der Balken nicht, kommt aus dem gewählten Endpoint kein Audio."

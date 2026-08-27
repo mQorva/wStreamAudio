@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Fehlt "origin", wird es mit -OriginUrl angelegt (Vorgabe:
-    CannonRS/wStreamAudio). Danach wie gewohnt Pull/Push; Upstream setzt -u beim
+    mQorva/wStreamAudio). Danach wie gewohnt Pull/Push; Upstream setzt -u beim
     ersten Push.
 
     Es wird immer auf -Branch gewechselt (Vorgabe: main); Pull/Push ohne
@@ -35,6 +35,12 @@
 .PARAMETER OriginUrl
     URL für "git remote add origin", falls origin noch fehlt (HTTPS oder SSH).
 
+.PARAMETER NoAutoCommit
+    Bei Push/PullPush: lokale Änderungen nicht automatisch committen.
+
+.PARAMETER CommitMessage
+    Commit-Nachricht für den automatischen Commit bei Push/PullPush.
+
 .PARAMETER ReleaseSetup
     Erstellt oder aktualisiert nach dem Push ein GitHub Release und lädt den
     Setup-Installer aus artifacts\installer hoch. Installiert GitHub CLI (gh)
@@ -49,7 +55,9 @@ param(
     [switch]$AllowUnrelatedHistories,
     [switch]$PushForceWithLease,
     [switch]$SkipPull,
-    [string]$OriginUrl = "https://github.com/CannonRS/wStreamAudio.git",
+    [switch]$NoAutoCommit,
+    [string]$CommitMessage = "Synchronisiere lokale Änderungen",
+    [string]$OriginUrl = "https://github.com/mQorva/wStreamAudio.git",
     [Alias("Release")]
     [switch]$ReleaseSetup
 )
@@ -234,6 +242,45 @@ function Invoke-RepoPush {
     else {
         Invoke-RepoGit @("push", "-u", "origin", $syncBranch)
     }
+}
+
+function Test-WorkingTreeHasChanges {
+    $status = (& git -C $repoRoot status --porcelain)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Git-Status konnte nicht ermittelt werden."
+    }
+
+    return ($null -ne $status -and $status.Count -gt 0)
+}
+
+function Invoke-AutoCommitLocalChanges {
+    if ($NoAutoCommit) {
+        Write-Host "Auto-Commit ist deaktiviert (-NoAutoCommit)."
+        return
+    }
+
+    if (-not (Test-WorkingTreeHasChanges)) {
+        Write-Host "Keine lokalen Änderungen für Auto-Commit."
+        return
+    }
+
+    $message = $CommitMessage.Trim()
+    if ([string]::IsNullOrWhiteSpace($message)) {
+        throw "CommitMessage darf nicht leer sein, wenn Auto-Commit aktiv ist."
+    }
+
+    Invoke-RepoGit @("add", "-A")
+
+    & git -C $repoRoot diff --cached --quiet
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Keine committbaren Änderungen nach git add -A."
+        return
+    }
+    elseif ($LASTEXITCODE -ne 1) {
+        throw "Git-Diff gegen den Index ist fehlgeschlagen (Exit $LASTEXITCODE)."
+    }
+
+    Invoke-RepoGit @("commit", "-m", $message)
 }
 
 function Get-AppVersion {
@@ -504,6 +551,10 @@ Assert-GitRepo
 Ensure-Origin -Url $OriginUrl
 Ensure-TargetBranch
 Show-Context
+
+if ($Action -in @("Push", "PullPush")) {
+    Invoke-AutoCommitLocalChanges
+}
 
 switch ($Action) {
     "Pull" {

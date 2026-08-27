@@ -26,6 +26,7 @@ public sealed partial class QuickPopupWindow : Window
     private readonly IPlayerStateBus _bus;
     private readonly ObservableCollection<PlayerListItemViewModel> _players = new();
     private bool _suppressEvents;
+    private string _visiblePlayerSignature = string.Empty;
     private bool _pinned; // wenn true: Always-on-top aktiviert (kein Auto-Hide mehr)
     private OverlappedPresenter? _presenter;
 
@@ -98,9 +99,15 @@ public sealed partial class QuickPopupWindow : Window
     /// </summary>
     private void OnSettingsSaved(object? sender, EventArgs e)
     {
-        // Egal welcher Wert sich geändert hat — wenn DLNA-/AirPlay-IsEnabled umgelegt wurde
-        // oder ein Gerät neu hinzukam, muss die Mini-Liste mitziehen. MergePlayers ist günstig
-        // (kein Netzwerk, nur Settings-Iteration) — wir mergen mit dem letzten LMS-Snapshot.
+        // Nur bei strukturellen Änderungen neu laden. Reine Lautstärke- oder Fensterpositions-
+        // Saves dürfen die ItemsControl-Liste nicht ersetzen, sonst verliert der Slider während
+        // des Ziehens seinen Thumb.
+        var signature = BuildVisiblePlayerSignature();
+        if (string.Equals(signature, _visiblePlayerSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
         DispatcherQueue.TryEnqueue(() => _ = RefreshPlayersAsync());
     }
 
@@ -315,7 +322,7 @@ public sealed partial class QuickPopupWindow : Window
             var name = !string.IsNullOrEmpty(persisted.CustomName)
                 ? persisted.CustomName
                 : (live?.Name ?? persisted.LastSeenName ?? persisted.Id);
-            // Slider zeigt persistierten TrimPercent — identisch zur Settings-Seite.
+            // Slider zeigt die persistierte LMS-Lautstärke — identisch zur Settings-Seite.
             var effVol = persisted.TrimPercent;
             var status = live is null
                 ? "offline"
@@ -453,8 +460,38 @@ public sealed partial class QuickPopupWindow : Window
         }
 
         _suppressEvents = false;
+        _visiblePlayerSignature = BuildVisiblePlayerSignature();
         // Höhe an die Anzahl der jetzt sichtbaren Player anpassen (im nächsten Layout-Pass).
         DispatcherQueue.TryEnqueue(ResizeToContent);
+    }
+
+    private string BuildVisiblePlayerSignature()
+    {
+        var settings = _settings.Current;
+        var parts = new List<string>();
+
+        foreach (var p in settings.Players.OrderBy(p => p.SortOrder))
+        {
+            if (p.IsLocalDevice || !p.IsEnabled) continue;
+            var name = p.CustomName ?? p.LastSeenName ?? p.Id;
+            parts.Add($"lms:{p.Id}:{p.SortOrder}:{name}");
+        }
+
+        foreach (var d in settings.DlnaRenderers.OrderBy(d => d.SortOrder))
+        {
+            if (!d.IsEnabled) continue;
+            var name = d.CustomName ?? d.FriendlyName;
+            parts.Add($"dlna:{d.Udn}:{d.SortOrder}:{name}");
+        }
+
+        foreach (var a in settings.AirPlayDevices.OrderBy(a => a.SortOrder))
+        {
+            if (!a.IsEnabled) continue;
+            var name = a.CustomName ?? a.FriendlyName;
+            parts.Add($"airplay:{a.Id}:{a.SortOrder}:{name}");
+        }
+
+        return string.Join("|", parts);
     }
 
     private void OnPlayerItemChanged(object? sender, PropertyChangedEventArgs e)
@@ -500,7 +537,7 @@ public sealed partial class QuickPopupWindow : Window
                     {
                         var url = _pipeline.StreamUrl?.ToString();
                         if (!string.IsNullOrEmpty(url))
-                            _ = _lms.PlayUrlAsync(vm.PlayerId, url);
+                            _ = PlayPlayerWithCurrentVolumeAsync(vm.PlayerId, url);
                     }
                     else
                     {
@@ -515,17 +552,8 @@ public sealed partial class QuickPopupWindow : Window
                 });
                 break;
             case nameof(PlayerListItemViewModel.EffectiveVolume):
-                // Slider repräsentiert den Trim-Wunschwert (identisch zur Settings-Seite).
-                if (entry is not null) entry.TrimPercent = vm.EffectiveVolume;
-                _settings.NotifyChanged();
-                if (settings.Streaming.PlayersFollowSystemVolume)
-                {
-                    _ = _volume.SetTrimAsync(vm.PlayerId, vm.EffectiveVolume);
-                }
-                else
-                {
-                    _ = _lms.SetVolumeAsync(vm.PlayerId, vm.EffectiveVolume);
-                }
+                // Slider repräsentiert die direkte LMS-Lautstärke (identisch zur Settings-Seite).
+                _ = _volume.SetTrimAsync(vm.PlayerId, vm.EffectiveVolume);
                 _bus.RaisePlayerChanged(new PlayerChangedEventArgs
                 {
                     PlayerId = vm.PlayerId,
@@ -607,6 +635,20 @@ public sealed partial class QuickPopupWindow : Window
             {
                 await _lms.UnsyncAsync(changed.PlayerId).ConfigureAwait(false);
             }
+        }
+        catch (Exception ex) { AppLogger.Write(ex); }
+    }
+
+    private async Task PlayPlayerWithCurrentVolumeAsync(string playerId, string url)
+    {
+        try
+        {
+            var settings = _settings.Current;
+            var entry = settings.Players.FirstOrDefault(p => p.Id == playerId);
+            if (entry is not null)
+                await _volume.SetTrimAsync(playerId, entry.TrimPercent).ConfigureAwait(false);
+
+            await _lms.PlayUrlAsync(playerId, url).ConfigureAwait(false);
         }
         catch (Exception ex) { AppLogger.Write(ex); }
     }

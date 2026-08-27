@@ -138,11 +138,6 @@
                 </Button>
             </Grid>
 
-            <tk:SettingsCard Header="Player folgen System-Lautstärke"
-                             Description="Master-Schalter für die Trim-basierte Lautstärke-Kopplung.">
-                <ToggleSwitch x:Name="FollowVolToggle" Toggled="FollowVolToggle_Toggled" />
-            </tk:SettingsCard>
-
             <tk:SettingsCard Header="Audio-Pegel (Aufnahme)"
                              Description="Spitzenpegel der laufenden Aufnahme. Bewegt sich der Balken nicht, kommt aus dem gewählten Endpoint kein Audio."
                              ContentAlignment="Vertical">

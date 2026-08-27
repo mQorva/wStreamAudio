@@ -41,13 +41,13 @@
          Self-Contained ist mit WinUI 3 erfahrungsgemäß instabil. -->
     <SelfContained>false</SelfContained>
 
-    <Authors>Ronny Schulz</Authors>
-    <Company></Company>
+    <Authors>mQorva</Authors>
+    <Company>mQorva</Company>
     <Product>wStreamAudio</Product>
     <AssemblyTitle>wStreamAudio</AssemblyTitle>
     <AssemblyName>wStreamAudio</AssemblyName>
     <RootNamespace>wStreamAudio</RootNamespace>
-    <Copyright>Copyright 2026 Ronny Schulz</Copyright>
+    <Copyright>Copyright 2026 mQorva</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

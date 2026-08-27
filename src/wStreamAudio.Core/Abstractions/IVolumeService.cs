@@ -5,13 +5,13 @@ public interface IVolumeService
     /// <summary>Aktuelle System-Lautstärke des Capture-Endpoints in 0–100.</summary>
     int SystemVolumePercent { get; }
 
-    /// <summary>Stellt den Trim für einen Player ein (0–150) und berechnet sofort die LMS-Lautstärke.</summary>
-    Task SetTrimAsync(string playerId, int trimPercent, CancellationToken ct = default);
+    /// <summary>Stellt die direkte LMS-Lautstärke für einen Player ein. Bei Windows-Mute wird 0 gesendet.</summary>
+    Task SetTrimAsync(string playerId, int volumePercent, CancellationToken ct = default);
 
-    /// <summary>Aktiviert oder deaktiviert die App-Steuerung pro Player.</summary>
+    /// <summary>Legacy-Schalter für gespeicherte Settings; die UI steuert Player-Lautstärke direkt.</summary>
     Task SetAppControlAsync(string playerId, bool enabled, CancellationToken ct = default);
 
-    /// <summary>Wendet alle gesteuerten Trims neu an (z.B. nach System-Vol-Änderung).</summary>
+    /// <summary>Wendet Windows-Mute bzw. gespeicherte direkte Lautstärken auf aktive Player an.</summary>
     Task ApplyAllAsync(CancellationToken ct = default);
 }
 
