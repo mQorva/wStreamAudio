@@ -489,7 +489,10 @@ function Ensure-GitHubCli {
 }
 
 function Ensure-GitHubCliAuthentication {
-    $null = & $script:GitHubCliCommand auth status 2>$null
+    # "gh auth status" meldet einen Fehler, sobald irgendein gespeichertes Konto
+    # ungültig ist, auch wenn das aktive Konto verwendbar ist. Entscheidend für
+    # den Release ist deshalb ein erfolgreicher authentifizierter API-Aufruf.
+    $null = & $script:GitHubCliCommand api user --jq .login 2>$null
     if ($LASTEXITCODE -eq 0) {
         return
     }
@@ -500,7 +503,7 @@ function Ensure-GitHubCliAuthentication {
 
     if (-not [string]::IsNullOrWhiteSpace($token)) {
         $env:GH_TOKEN = $token
-        $null = & $script:GitHubCliCommand auth status 2>$null
+        $null = & $script:GitHubCliCommand api user --jq .login 2>$null
         if ($LASTEXITCODE -eq 0) {
             return
         }
