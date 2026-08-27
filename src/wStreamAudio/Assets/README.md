@@ -25,7 +25,7 @@ Build funktioniert also auch ohne sie.
 python tools\generate-icons.py
 ```
 
-Das Skript liegt unter [`tools/generate-icons.py`](../../../../tools/generate-icons.py)
+Das Skript liegt unter [`tools/generate-icons.py`](../../../tools/generate-icons.py)
 und benutzt Pillow. Pixelgrößen, Geometrie und Farben sind dort als Konstanten
 am Anfang änderbar. Das Motiv ist ein randfüllendes, transparentes,
 S-förmiges Audio-Stream-Zeichen mit Pegelmarken und Knotenpunkten; der aktive

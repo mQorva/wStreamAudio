@@ -1,151 +1,160 @@
 # wStreamAudio
 
-wStreamAudio ist eine Windows-Tray-App, die den Ton eines ausgewählten
-Windows-Wiedergabegeräts per WASAPI-Loopback abgreift und als lokalen
-MP3-Live-Stream im LAN bereitstellt. Die App kann den Stream automatisch an
-Logitech Media Server (LMS) / Squeezebox-Player, DLNA/UPnP-Renderer und
-AirPlay-1-Empfänger weitergeben.
+wStreamAudio überträgt den Ton eines Windows-Wiedergabegeräts als lokalen
+MP3-Live-Stream an Logitech Media Server (LMS), DLNA/UPnP-Renderer und
+kompatible AirPlay-1-Empfänger. Die App läuft im Windows-Infobereich und
+ändert das Windows-Standard-Wiedergabegerät nicht.
 
-> Hinweis: Diese App entstand unter intensivem KI-Einsatz auf Basis eines
-> bestehenden Projekt-Patterns (Magic-Voice von Ronny Schulz).
+> **Projektstatus:** wStreamAudio ist eine Vorabversion. LMS ist der
+> Hauptpfad. Direkte DLNA- und insbesondere AirPlay-1-Wiedergabe hängt vom
+> jeweiligen Empfänger ab und ist noch nicht auf einer breiten Gerätebasis
+> verifiziert.
 
-## Aktueller Stand
+## Installation unter Windows
 
-- Tray-App für Windows 10/11 mit WinUI-3-Einstellungen und Mini-Fenster
-- Endpoint-Loopback für Default-Device, SPDIF, HDMI und andere aktive
-  Render-Endpoints, ohne den Windows-Default ändern zu müssen
-- Downmix von Mono/Mehrkanal auf Stereo, Ausgabe als 16-bit-PCM intern
-- HTTP-Live-Stream unter `/stream.mp3` mit MP3 128 kbit/s CBR
-- LMS-Anbindung per JSON-RPC: Player laden, Power, Lautstärke, Sync,
-  Play/Pause/Stop und Stream-URL automatisch starten
-- Sample-synchrone Wiedergabe innerhalb der LMS/Squeezebox-Sync-Gruppe
-- Direkte DLNA/UPnP-Steuerung per SSDP und AVTransport
-- Direkte AirPlay-1-Ausgabe per RAOP/RTSP/RTP für kompatible Empfänger
-- Lautstärke-Kopplung mit System-Lautstärke und pro Player/Renderer
-  einstellbarem Pegel
-- Autostart, Start ins Tray, Wiedergabe beim nächsten Start fortsetzen
-- Hell/Dunkel/System-Theme und deutsche/englische UI-Texte
-- Einstellungen unter `%LOCALAPPDATA%\wStreamAudio\settings.json`
-- Logs unter `%LOCALAPPDATA%\wStreamAudio\logs\`
+1. Auf der [GitHub-Release-Seite](https://github.com/mQorva/wStreamAudio/releases)
+   den neuesten `wStreamAudio-Setup-<Version>.exe` herunterladen.
+2. Die Setup-Datei starten und den Anweisungen folgen.
+3. wStreamAudio anschließend über das Startmenü oder direkt nach Abschluss
+   des Setups öffnen.
 
-Nicht fertig oder bewusst begrenzt:
+Das Setup installiert wStreamAudio für den aktuellen Benutzer unter
+`%LOCALAPPDATA%\Programs\wStreamAudio`. Fehlende Microsoft-Komponenten werden
+bei Bedarf nachinstalliert:
 
-- Per-App-Capture ist im Modell und in der UI vorbereitet, aber die Runtime
-  nutzt aktuell nur Endpoint-Loopback.
-- AirPlay 2, HomePod und Apple TV werden nicht als echter AirPlay-2-Sender
-  unterstützt. Der direkte Sender ist AirPlay 1/RAOP.
-- DLNA und AirPlay laufen direkt gegen die Geräte und sind nicht sample-genau
-  mit der LMS/Squeezebox-Gruppe synchron.
-- FLAC/WAV-Ausgabe ist aktuell nicht der Standardpfad. Der HTTP-Stream ist MP3,
-  weil das mit LMS und vielen DLNA-Renderern ohne zusätzliche Transcoding-
-  Konfiguration funktioniert.
+- .NET Windows Desktop Runtime 10.x
+- Windows App Runtime 1.8 x64
 
-## Voraussetzungen
+Für ein Update wird einfach das Setup einer neueren Version ausgeführt. Eine
+laufende wStreamAudio-Instanz wird dabei beendet. Einstellungen und Logs unter
+`%LOCALAPPDATA%\wStreamAudio` bleiben erhalten.
 
-- Windows 10 Build 19041+ oder Windows 11, x64
-- .NET 10 SDK laut `global.json` zum Entwickeln und Bauen
-- .NET Windows Desktop Runtime 10.x auf Zielrechnern
-- Windows App Runtime 1.8 x64 auf Zielrechnern
-- Für LMS/Squeezebox: ein erreichbarer Logitech Media Server im LAN
-- Optional für Setup-Installer: Inno Setup 6
-- Optional für Releases: GitHub CLI (`gh`), angemeldet
+> **Windows-Sicherheitshinweis:** Die derzeit veröffentlichten Setup-Dateien
+> sind noch nicht digital signiert. Windows kann deshalb eine
+> SmartScreen-Warnung anzeigen. Releases ausschließlich aus diesem Repository
+> herunterladen.
 
-`Install.ps1` kann die .NET Desktop Runtime 10.x und Windows App Runtime 1.8
-bei Bedarf per `winget` oder Direkt-Download installieren.
+## Funktionen
 
-## Bauen und starten
+- Aufnahme eines aktiven Windows-Render-Endpoints per WASAPI-Loopback, zum
+  Beispiel Standardgerät, SPDIF oder HDMI
+- Downmix von Mono oder Mehrkanal auf internes Stereo-PCM mit 16 Bit
+- lokaler MP3-Live-Stream mit 128 kbit/s CBR unter `/stream.mp3`
+- LMS-Steuerung per JSON-RPC: Player laden, ein- und ausschalten, Lautstärke,
+  Synchronisationsgruppe, Wiedergabe, Pause und Stopp
+- direkte DLNA/UPnP-Steuerung per SSDP, AVTransport und RenderingControl
+- experimentelle direkte AirPlay-1-Ausgabe per RAOP/RTSP/RTP
+- Mini-Fenster und Tray-Menü zur Steuerung von Stream und Wiedergabegeräten
+- Autostart, Start ins Tray und optionales Fortsetzen der letzten Wiedergabe
+- System-, helles und dunkles Farbschema
+- deutsche Oberfläche; eine englische Übersetzung ist teilweise vorhanden
 
-```powershell
-# Build
-dotnet build wStreamAudio.sln -c Debug -p:Platform=x64
+Innerhalb einer LMS/Squeezebox-Synchronisationsgruppe übernimmt LMS die
+zeitliche Synchronisierung. Direkt angesteuerte DLNA- und AirPlay-Geräte sind
+nicht mit dieser Gruppe samplegenau synchronisiert.
 
-# App starten (Debug)
-dotnet run --project src\wStreamAudio\wStreamAudio.csproj -c Debug -p:Platform=x64
+## Bekannte Einschränkungen
 
-# Tests
-dotnet test wStreamAudio.sln
-```
+- Per-App-Capture ist in Datenmodell und Oberfläche vorbereitet, wird von der
+  Aufnahmeruntime aber noch nicht unterstützt. Verwendbar ist ausschließlich
+  Endpoint-Loopback.
+- Die im Capture-Profil wählbare Ziel-Samplerate wird vom Endpoint-Pfad noch
+  nicht angewendet. Aufgenommen wird im WASAPI-Mixformat.
+- AirPlay 2 wird nicht unterstützt. HomePod und Apple TV sind deshalb keine
+  verlässlich unterstützten Ziele.
+- Direkte DLNA- und AirPlay-Wiedergabe ist nicht mit einer LMS-Gruppe
+  synchronisiert.
+- Der HTTP-Ausgabepfad stellt MP3 bereit, nicht WAV oder FLAC.
+- Teile der Oberfläche sind noch ausschließlich deutsch.
 
-## Build, Installation und Update
-
-```powershell
-# Release-Payload und, falls Inno Setup vorhanden ist, Setup-Installer erzeugen
-.\Build.ps1
-
-# Nur veröffentlichbaren Ordner bauen, ohne Setup-Installer
-.\Build.ps1 -SkipInstaller
-
-# Installation aus artifacts\release\wStreamAudio
-.\Install.ps1
-
-# Installation aus einem kopierten Payload-Ordner
-.\Install.ps1 -SourceDir "D:\Deploy\wStreamAudio"
-
-# Deinstallation, optional mit Nutzerdaten
-.\Uninstall.ps1 -RemoveUserData
-```
-
-Installiert wird nach `%LOCALAPPDATA%\Programs\wStreamAudio`. Vor Updates
-beendet `Install.ps1` eine laufende wStreamAudio-Instanz, räumt den Zielordner
-auf und kopiert den neuen Payload. Die Autostart-Einstellung wird ausschließlich
-in der App verwaltet.
-
-## GitHub-Sync und Release
-
-```powershell
-# Änderungen mit GitHub synchronisieren
-.\git-sync.ps1
-
-# Ohne Pull pushen
-.\git-sync.ps1 -SkipPull
-
-# Setup-Datei als GitHub-Release-Asset hochladen
-.\Build.ps1
-.\git-sync.ps1 -Release
-```
-
-Die Release-Version kommt aus `Directory.Build.props` (`AppVersion`). Das
-Release-Skript erstellt oder aktualisiert den Tag `v<Version>` und lädt
-`artifacts\installer\wStreamAudio-Setup-<Version>.exe` hoch.
+Der ausführlichere, nach Implementierung und Verifikation getrennte Stand
+steht in [docs/PLAN.md](docs/PLAN.md).
 
 ## Bedienung
 
 - Linksklick auf das Tray-Icon öffnet das Mini-Fenster.
-- Rechtsklick auf das Tray-Icon öffnet das Kontextmenü.
-- Im Mini-Fenster startet oder stoppt der Play-Button die Pipeline.
-- Im Mini-Fenster steuerst du Wiedergabe und Pegel pro sichtbarem Gerät.
-- Auf der Streaming-Seite steuerst du, welche Geräte sichtbar sind und welche
-  beim Stream-Start mitlaufen.
-- In den Einstellungen werden Capture-Profile, Dienste, Stream-Port,
-  Firewall-Regel, Autostart, Theme und Sprache verwaltet.
-- Änderungen werden automatisch gespeichert.
+- Rechtsklick öffnet das Kontextmenü.
+- Der zentrale Wiedergabeschalter startet oder beendet Aufnahme und Stream.
+- Auf der Streaming-Seite werden sichtbare und beim Start mitlaufende Geräte
+  ausgewählt.
+- Einstellungen werden automatisch gespeichert.
 
-## Architektur in Kürze
+LMS muss im Netzwerk erreichbar sein. Host und Port werden in den
+Einstellungen eingetragen. Der Verbindungstest prüft die TCP-Erreichbarkeit
+und eine Anfrage an `/jsonrpc.js`.
 
-```text
-Windows-Render-Endpoint
-    -> WASAPI-Loopback (NAudio)
-    -> Stereo-16-bit-PCM
-    -> HttpStreamServer (/stream.mp3, MP3 128 kbit/s)
-       -> LMS / Squeezebox per JSON-RPC und HTTP-Stream
-       -> DLNA-Renderer per SSDP/AVTransport
-       -> AirPlay-1-Empfänger per RAOP
+## Voraussetzungen
+
+Für die installierte App:
+
+- Windows 10 Build 19041 oder neuer beziehungsweise Windows 11, x64
+- Netzwerkzugriff auf die gewünschten Empfänger
+- für Squeezebox-Player ein erreichbarer Logitech Media Server
+
+Die benötigten Microsoft-Runtimes werden vom Setup geprüft.
+
+## Entwicklung
+
+Erforderlich sind das in `global.json` festgelegte .NET-10-SDK und für den
+Setup-Build optional Inno Setup 6.
+
+```powershell
+# Projekt bauen
+dotnet build wStreamAudio.sln -c Debug -p:Platform=x64
+
+# Tests ausführen
+dotnet test wStreamAudio.sln
+
+# App im Debug-Modus starten
+dotnet run --project src\wStreamAudio\wStreamAudio.csproj -c Debug -p:Platform=x64
+
+# Release-Payload und, wenn Inno Setup vorhanden ist, Setup erzeugen
+.\Build.ps1
+
+# Nur den veröffentlichbaren Anwendungsordner erzeugen
+.\Build.ps1 -SkipInstaller
 ```
 
-LMS muss im Netz erreichbar sein. Der Host wird in den Einstellungen gepflegt;
-der Verbindungstest prüft TCP-Erreichbarkeit und `POST /jsonrpc.js`.
+`Install.ps1` bleibt als manueller Installationsweg für lokale Builds und
+kopierte Payload-Ordner verfügbar:
 
-## Datenschutz
+```powershell
+.\Install.ps1
+.\Install.ps1 -SourceDir "D:\Deploy\wStreamAudio"
+.\Uninstall.ps1 -RemoveUserData
+```
 
-wStreamAudio arbeitet lokal im LAN. Die App sendet keine Nutzungs- oder
-Audiodaten an Cloud-Dienste. Netzwerkkommunikation findet nur zu den
-konfigurierten oder gefundenen Geräten statt: LMS per HTTP/JSON-RPC,
-DLNA/UPnP per SSDP/SOAP, AirPlay per mDNS/RAOP sowie der lokale HTTP-
-Audio-Stream.
+## Release für Maintainer
+
+Die Version steht zentral als `AppVersion` in `Directory.Build.props`. Vor
+einer Veröffentlichung müssen Build, Tests und der erzeugte Installer geprüft
+werden.
+
+```powershell
+.\Build.ps1 -Clean
+.\git-sync.ps1 -Release
+```
+
+Das Release-Skript verwendet den Tag `v<Version>` und das Asset
+`artifacts\installer\wStreamAudio-Setup-<Version>.exe`. Ein vorhandener Tag
+wird nicht auf einen anderen Commit verschoben. Für jede veröffentlichte
+Version muss daher ein eigener, zur Versionsnummer passender Commit vorhanden
+sein.
+
+## Lokale Daten und Datenschutz
+
+- Einstellungen: `%LOCALAPPDATA%\wStreamAudio\settings.json`
+- Logs: `%LOCALAPPDATA%\wStreamAudio\logs\`
+
+Während der Wiedergabe werden Audio- und Steuerdaten nur im lokalen Netzwerk
+an die konfigurierten beziehungsweise gefundenen Geräte übertragen. Die App
+sendet keine Nutzungs- oder Audiodaten an einen Cloud-Dienst. Setup und
+PowerShell-Installation können Microsoft-Dienste kontaktieren, um fehlende
+Runtimes herunterzuladen.
 
 ## Lizenz
 
-MIT - siehe [LICENSE](LICENSE). Komponenten Dritter siehe
+MIT, siehe [LICENSE](LICENSE). Hinweise zu Komponenten Dritter stehen in
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Autor: mQorva, Copyright 2026
+Copyright 2026 mQorva

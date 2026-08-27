@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Fehlt "origin", wird es mit -OriginUrl angelegt (Vorgabe: öffentliches Repo
-    mQorva/Schreibkraft). Danach wie gewohnt Pull/Push; Upstream setzt -u beim
+    mQorva/wStreamAudio). Danach wie gewohnt Pull/Push; Upstream setzt -u beim
     ersten Push.
 
     Es wird immer auf -Branch gewechselt (Vorgabe: main); Pull/Push ohne Upstream
@@ -47,6 +47,10 @@
     Setup-Installer aus artifacts\installer hoch. Installiert GitHub CLI (gh)
     automatisch, falls sie fehlt.
     Fragt interaktiv Draft/Pre-Release und bei Bedarf Überschreiben ab. Alias: -Release.
+
+.PARAMETER ReleaseNotesPath
+    Optionale Markdown-Datei für die Release-Notizen. Ohne Angabe wird zuerst
+    docs\releases\<Version>.md verwendet und ansonsten ein kurzer Standardtext.
 #>
 param(
     [ValidateSet("Pull", "Push", "PullPush")]
@@ -59,6 +63,7 @@ param(
     [switch]$NoAutoCommit,
     [string]$CommitMessage = "",
     [string]$OriginUrl = "https://github.com/mQorva/wStreamAudio.git",
+    [string]$ReleaseNotesPath = "",
     [Alias("Release")]
     [switch]$ReleaseSetup
 )
@@ -440,7 +445,7 @@ function Install-GitHubCliPortable {
     New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
 
     try {
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cli/cli/releases/latest" -Headers @{ "User-Agent" = "Schreibkraft-Sync-GitHub" }
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cli/cli/releases/latest" -Headers @{ "User-Agent" = "wStreamAudio-Git-Sync" }
         $asset = $release.assets | Where-Object { $_.name -match "windows_amd64\.zip$" } | Select-Object -First 1
         if ($null -eq $asset) {
             throw "Kein windows_amd64.zip Asset im aktuellen GitHub CLI Release gefunden."
@@ -542,8 +547,23 @@ function Get-ReleaseOptions {
         [string]$DefaultSetupPath
     )
 
-    $title = "Schreibkraft $Version"
-    $notes = "Setup-Installer für Schreibkraft $Version."
+    $title = "wStreamAudio $Version"
+    $defaultNotesPath = Join-Path $repoRoot "docs\releases\$Version.md"
+    $notesPath = if ([string]::IsNullOrWhiteSpace($ReleaseNotesPath)) {
+        $defaultNotesPath
+    }
+    elseif ([System.IO.Path]::IsPathRooted($ReleaseNotesPath)) {
+        $ReleaseNotesPath
+    }
+    else {
+        Join-Path $repoRoot $ReleaseNotesPath
+    }
+    $notes = if (Test-Path -LiteralPath $notesPath) {
+        Get-Content -LiteralPath $notesPath -Raw
+    }
+    else {
+        "Windows-Setup-Installer für wStreamAudio $Version."
+    }
     $setup = $DefaultSetupPath
     $draft = $false
     $prerelease = $false
@@ -551,6 +571,9 @@ function Get-ReleaseOptions {
     Write-Host "Release-Version: $Version"
     Write-Host "Release-Tag: v$Version"
     Write-Host "Setup-Datei: $DefaultSetupPath"
+    if (Test-Path -LiteralPath $notesPath) {
+        Write-Host "Release-Notizen: $notesPath"
+    }
 
     $draft = Read-YesNo "Release als Draft erstellen?"
     $prerelease = Read-YesNo "Release als Pre-Release markieren?"
@@ -574,7 +597,7 @@ function Invoke-GitHubReleaseSetup {
 
     $version = Get-AppVersion
     $tag = "v$version"
-    $defaultSetup = Join-Path $repoRoot "artifacts\installer\Schreibkraft-$version.exe"
+    $defaultSetup = Join-Path $repoRoot "artifacts\installer\wStreamAudio-Setup-$version.exe"
     $options = Get-ReleaseOptions -Version $version -DefaultSetupPath $defaultSetup
     $setup = $options.SetupPath
 
@@ -588,8 +611,13 @@ function Invoke-GitHubReleaseSetup {
         }
 
         $head = (& git -C $repoRoot rev-parse HEAD).Trim()
-        Invoke-RepoGit @("tag", "-f", $tag, $head)
-        Invoke-RepoGit @("push", "origin", $tag, "--force")
+        $tagCommit = (& git -C $repoRoot rev-list -n 1 $tag 2>$null | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($tagCommit)) {
+            throw "GitHub Release $tag existiert, aber der Tag ist lokal nicht vorhanden. Tags abrufen und erneut prüfen."
+        }
+        if ($tagCommit -ne $head) {
+            throw "GitHub Release $tag gehört zu Commit $tagCommit, HEAD ist $head. Veröffentlichte Versionstags werden nicht verschoben; bitte die Version erhöhen."
+        }
         Write-Host "GitHub Release $tag existiert - lade Setup-Asset neu hoch."
         & $script:GitHubCliCommand release upload $tag $setup --clobber
         if ($LASTEXITCODE -ne 0) {
@@ -599,8 +627,14 @@ function Invoke-GitHubReleaseSetup {
     }
 
     $head = (& git -C $repoRoot rev-parse HEAD).Trim()
-    Invoke-RepoGit @("tag", "-f", $tag, $head)
-    Invoke-RepoGit @("push", "origin", $tag, "--force")
+    $existingTagCommit = (& git -C $repoRoot rev-list -n 1 $tag 2>$null | Out-String).Trim()
+    if (-not [string]::IsNullOrWhiteSpace($existingTagCommit) -and $existingTagCommit -ne $head) {
+        throw "Tag $tag zeigt bereits auf Commit $existingTagCommit, HEAD ist $head. Version erhöhen statt den Tag zu verschieben."
+    }
+    if ([string]::IsNullOrWhiteSpace($existingTagCommit)) {
+        Invoke-RepoGit @("tag", $tag, $head)
+    }
+    Invoke-RepoGit @("push", "origin", $tag)
 
     $args = @("release", "create", $tag, $setup, "--title", $options.Title, "--notes", $options.Notes, "--target", $syncBranch)
     if ($options.Draft) {
