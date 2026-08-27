@@ -139,7 +139,7 @@ Legende: fertig, eingeschränkt, offen, bewusst nicht geplant
 | Install-Skript | fertig | Runtime-Prüfung, Update, Startmenü-Link |
 | Uninstall-Skript | fertig | App entfernen, optional Nutzerdaten |
 | Inno-Setup-Projekt | fertig | `installer/wStreamAudio.iss` |
-| GitHub-Sync | fertig | `Sync-GitHub.ps1`, optional Release-Upload |
+| GitHub-Sync | fertig | `git-sync.ps1`, optional Release-Upload |
 
 ## Priorisierung
 

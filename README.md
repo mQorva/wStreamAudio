@@ -94,14 +94,14 @@ in der App verwaltet.
 
 ```powershell
 # Änderungen mit GitHub synchronisieren
-.\Sync-GitHub.ps1
+.\git-sync.ps1
 
 # Ohne Pull pushen
-.\Sync-GitHub.ps1 -SkipPull
+.\git-sync.ps1 -SkipPull
 
 # Setup-Datei als GitHub-Release-Asset hochladen
 .\Build.ps1
-.\Sync-GitHub.ps1 -Release
+.\git-sync.ps1 -Release
 ```
 
 Die Release-Version kommt aus `Directory.Build.props` (`AppVersion`). Das

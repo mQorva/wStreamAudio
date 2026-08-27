@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-    Synchronisiert wStreamAudio mit dem konfigurierten Git-Remote (z. B. GitHub).
+    Synchronisiert mit dem konfigurierten Git-Remote (z. B. GitHub).
 
 .DESCRIPTION
-    Fehlt "origin", wird es mit -OriginUrl angelegt (Vorgabe:
-    mQorva/wStreamAudio). Danach wie gewohnt Pull/Push; Upstream setzt -u beim
+    Fehlt "origin", wird es mit -OriginUrl angelegt (Vorgabe: öffentliches Repo
+    mQorva/Schreibkraft). Danach wie gewohnt Pull/Push; Upstream setzt -u beim
     ersten Push.
 
-    Es wird immer auf -Branch gewechselt (Vorgabe: main); Pull/Push ohne
-    Upstream nutzt ausdrücklich diesen Branch (origin/<Branch>).
+    Es wird immer auf -Branch gewechselt (Vorgabe: main); Pull/Push ohne Upstream
+    nutzt ausdrücklich diesen Branch (origin/<Branch>).
 
     Ohne gemeinsamen Vorfahren mit dem Remote-Branch erkennt das Skript das und
     nutzt automatisch --allow-unrelated-histories beim Pull (GitHub-README/LICENSE
@@ -32,14 +32,15 @@
 .PARAMETER PushForceWithLease
     Bei Push: git push --force-with-lease (nur mit Absicht).
 
-.PARAMETER OriginUrl
-    URL für "git remote add origin", falls origin noch fehlt (HTTPS oder SSH).
-
 .PARAMETER NoAutoCommit
     Bei Push/PullPush: lokale Änderungen nicht automatisch committen.
 
 .PARAMETER CommitMessage
     Commit-Nachricht für den automatischen Commit bei Push/PullPush.
+    Ohne Angabe wird sie aus den vorgemerkten Änderungen abgeleitet.
+
+.PARAMETER OriginUrl
+    URL für "git remote add origin", falls origin noch fehlt (HTTPS oder SSH).
 
 .PARAMETER ReleaseSetup
     Erstellt oder aktualisiert nach dem Push ein GitHub Release und lädt den
@@ -56,7 +57,7 @@ param(
     [switch]$PushForceWithLease,
     [switch]$SkipPull,
     [switch]$NoAutoCommit,
-    [string]$CommitMessage = "Synchronisiere lokale Änderungen",
+    [string]$CommitMessage = "",
     [string]$OriginUrl = "https://github.com/mQorva/wStreamAudio.git",
     [Alias("Release")]
     [switch]$ReleaseSetup
@@ -93,6 +94,21 @@ function Assert-GitRepo {
     if (-not (Test-Path -LiteralPath (Join-Path $repoRoot ".git"))) {
         throw "Kein Git-Repository (.git fehlt unter $repoRoot)."
     }
+}
+
+function Get-AppVersion {
+    $propsPath = Join-Path $repoRoot "Directory.Build.props"
+    if (-not (Test-Path -LiteralPath $propsPath)) {
+        throw "Directory.Build.props fehlt im Repo-Root - -ReleaseSetup steht in diesem Repository nicht zur Verfügung."
+    }
+
+    [xml]$props = Get-Content -LiteralPath $propsPath
+    $version = $props.Project.PropertyGroup.AppVersion
+    if ([string]::IsNullOrWhiteSpace($version)) {
+        throw "AppVersion wurde in Directory.Build.props nicht gefunden."
+    }
+
+    return $version.Trim()
 }
 
 function Get-CurrentBranchName {
@@ -150,11 +166,115 @@ function Show-Context {
     }
 }
 
+# Commit-Nachricht aus dem Staging-Bereich ableiten: Bereiche + Art der Änderungen.
+function New-SyncMessage {
+    $rows = @(& git -C $repoRoot diff --cached --name-status)
+    if (-not $rows) { return "chore: Arbeitsstand synchronisiert" }
+
+    $added = 0; $modified = 0; $deleted = 0; $renamed = 0
+    $areas = New-Object System.Collections.Generic.List[string]
+    $files = New-Object System.Collections.Generic.List[string]
+
+    foreach ($row in $rows) {
+        $parts = $row -split "`t"
+        $code = $parts[0]
+        $path = $parts[-1]
+        switch -Regex ($code) {
+            '^A' { $added++ }
+            '^D' { $deleted++ }
+            '^R' { $renamed++ }
+            '^C' { $added++ }
+            default { $modified++ }
+        }
+        $files.Add($path)
+        $seg = ($path -split '/')[0]
+        if ($seg -eq $path) { $seg = "Repo-Root" }
+        if (-not $areas.Contains($seg)) { $areas.Add($seg) }
+    }
+
+    $total = $rows.Count
+    if ($total -eq 1) {
+        $scope = $files[0]
+    }
+    elseif ($areas.Count -le 3) {
+        $scope = ($areas -join ', ')
+    }
+    else {
+        $scope = "{0}, {1}, {2} und {3} weitere Bereiche" -f $areas[0], $areas[1], $areas[2], ($areas.Count - 3)
+    }
+
+    $bits = @()
+    if ($added) { $bits += "$added neu" }
+    if ($modified) { $bits += "$modified geändert" }
+    if ($deleted) { $bits += "$deleted gelöscht" }
+    if ($renamed) { $bits += "$renamed verschoben" }
+
+    $summary = "chore: $scope aktualisiert ({0})" -f ($bits -join ', ')
+    if ($summary.Length -gt 72 -and $total -gt 1) {
+        $summary = "chore: $($areas.Count) Bereiche aktualisiert ({0} Dateien: {1})" -f $total, ($bits -join ', ')
+    }
+
+    return $summary
+}
+
+function Test-WorkingTreeHasChanges {
+    $status = (& git -C $repoRoot status --porcelain)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Git-Status konnte nicht ermittelt werden."
+    }
+
+    return ($null -ne $status -and $status.Count -gt 0)
+}
+
+function Invoke-AutoCommitLocalChanges {
+    if ($NoAutoCommit) {
+        Write-Host "Auto-Commit ist deaktiviert (-NoAutoCommit)."
+        return
+    }
+
+    if (-not (Test-WorkingTreeHasChanges)) {
+        Write-Host "Keine lokalen Änderungen für Auto-Commit."
+        return
+    }
+
+    Invoke-RepoGit @("add", "-A")
+
+    & git -C $repoRoot diff --cached --quiet
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Keine committbaren Änderungen nach git add -A."
+        return
+    }
+    elseif ($LASTEXITCODE -ne 1) {
+        throw "Git-Diff gegen den Index ist fehlgeschlagen (Exit $LASTEXITCODE)."
+    }
+
+    $message = $CommitMessage.Trim()
+    if ([string]::IsNullOrWhiteSpace($message)) {
+        $message = New-SyncMessage
+        Write-Host "Commit-Nachricht abgeleitet: $message"
+    }
+
+    Invoke-RepoGit @("commit", "-m", $message)
+}
+
+function Test-RemoteBranchExists {
+    # Ein frisch angelegtes Repo kennt den Branch noch nicht; ein Pull bricht dann ab.
+    $refs = (& git -C $repoRoot ls-remote --heads origin $syncBranch 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $false }
+
+    return -not [string]::IsNullOrWhiteSpace(($refs | Out-String).Trim())
+}
+
 function Invoke-RepoPull {
     param(
         [switch]$UseRebase,
         [switch]$AllowUnrelated
     )
+
+    if (-not (Test-UpstreamConfigured) -and -not (Test-RemoteBranchExists)) {
+        Write-Host "Remote kennt den Branch '$syncBranch' noch nicht - Pull wird uebersprungen."
+        return
+    }
 
     $useUnrelatedMerge = [bool]$AllowUnrelated
 
@@ -244,56 +364,6 @@ function Invoke-RepoPush {
     }
 }
 
-function Test-WorkingTreeHasChanges {
-    $status = (& git -C $repoRoot status --porcelain)
-    if ($LASTEXITCODE -ne 0) {
-        throw "Git-Status konnte nicht ermittelt werden."
-    }
-
-    return ($null -ne $status -and $status.Count -gt 0)
-}
-
-function Invoke-AutoCommitLocalChanges {
-    if ($NoAutoCommit) {
-        Write-Host "Auto-Commit ist deaktiviert (-NoAutoCommit)."
-        return
-    }
-
-    if (-not (Test-WorkingTreeHasChanges)) {
-        Write-Host "Keine lokalen Änderungen für Auto-Commit."
-        return
-    }
-
-    $message = $CommitMessage.Trim()
-    if ([string]::IsNullOrWhiteSpace($message)) {
-        throw "CommitMessage darf nicht leer sein, wenn Auto-Commit aktiv ist."
-    }
-
-    Invoke-RepoGit @("add", "-A")
-
-    & git -C $repoRoot diff --cached --quiet
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "Keine committbaren Änderungen nach git add -A."
-        return
-    }
-    elseif ($LASTEXITCODE -ne 1) {
-        throw "Git-Diff gegen den Index ist fehlgeschlagen (Exit $LASTEXITCODE)."
-    }
-
-    Invoke-RepoGit @("commit", "-m", $message)
-}
-
-function Get-AppVersion {
-    $propsPath = Join-Path $repoRoot "Directory.Build.props"
-    [xml]$props = Get-Content -LiteralPath $propsPath
-    $version = $props.Project.PropertyGroup.AppVersion
-    if ([string]::IsNullOrWhiteSpace($version)) {
-        throw "AppVersion wurde in Directory.Build.props nicht gefunden."
-    }
-
-    return $version.Trim()
-}
-
 function Add-DirectoryToPath {
     param([Parameter(Mandatory = $true)][string]$Directory)
 
@@ -370,7 +440,7 @@ function Install-GitHubCliPortable {
     New-Item -ItemType Directory -Force -Path $extractRoot | Out-Null
 
     try {
-        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cli/cli/releases/latest" -Headers @{ "User-Agent" = "wStreamAudio-Sync-GitHub" }
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/cli/cli/releases/latest" -Headers @{ "User-Agent" = "Schreibkraft-Sync-GitHub" }
         $asset = $release.assets | Where-Object { $_.name -match "windows_amd64\.zip$" } | Select-Object -First 1
         if ($null -eq $asset) {
             throw "Kein windows_amd64.zip Asset im aktuellen GitHub CLI Release gefunden."
@@ -472,8 +542,8 @@ function Get-ReleaseOptions {
         [string]$DefaultSetupPath
     )
 
-    $title = "wStreamAudio $Version"
-    $notes = "Setup-Installer für wStreamAudio $Version."
+    $title = "Schreibkraft $Version"
+    $notes = "Setup-Installer für Schreibkraft $Version."
     $setup = $DefaultSetupPath
     $draft = $false
     $prerelease = $false
@@ -504,7 +574,7 @@ function Invoke-GitHubReleaseSetup {
 
     $version = Get-AppVersion
     $tag = "v$version"
-    $defaultSetup = Join-Path $repoRoot "artifacts\installer\wStreamAudio-Setup-$version.exe"
+    $defaultSetup = Join-Path $repoRoot "artifacts\installer\Schreibkraft-$version.exe"
     $options = Get-ReleaseOptions -Version $version -DefaultSetupPath $defaultSetup
     $setup = $options.SetupPath
 
@@ -547,7 +617,38 @@ function Invoke-GitHubReleaseSetup {
     }
 }
 
+function Clear-StaleIndexLock {
+    # Abgebrochene Git-Aufrufe lassen .git/index.lock liegen; jeder spätere Commit
+    # scheitert dann. Nur aufräumen, wenn wirklich kein git-Prozess sie halten kann.
+    $gitDir = (& git -C $repoRoot rev-parse --git-dir | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($gitDir)) { return }
+    if (-not [System.IO.Path]::IsPathRooted($gitDir)) { $gitDir = Join-Path $repoRoot $gitDir }
+
+    $lockFile = Join-Path $gitDir "index.lock"
+    if (-not (Test-Path -LiteralPath $lockFile)) { return }
+
+    $lockTime = (Get-Item -LiteralPath $lockFile).LastWriteTime
+    $ageMinutes = ((Get-Date) - $lockTime).TotalMinutes
+
+    # Nur ein git-Prozess, der VOR der Sperre gestartet wurde, kann ihr Halter sein.
+    # Zwei Sekunden Toleranz für die Zeitstempel-Auflösung.
+    $holders = @(
+        Get-Process git -ErrorAction SilentlyContinue | Where-Object {
+            try { $_.StartTime -le $lockTime.AddSeconds(2) } catch { $false }
+        }
+    ).Count
+
+    if ($holders -gt 0 -and $ageMinutes -lt 15) {
+        throw "Es läuft gerade ein anderer Git-Vorgang in diesem Repository ($holders Prozess(e), Sperre $([math]::Round($ageMinutes)) Minuten alt). Kurz warten und erneut starten."
+    }
+
+    Remove-Item -LiteralPath $lockFile -Force
+    $grund = if ($holders -gt 0) { "kein gesunder Vorgang hält den Index so lange" } else { "kein passender git-Prozess aktiv" }
+    Write-Host ("verwaiste Sperre entfernt (index.lock, {0:N0} Minuten alt, {1})" -f $ageMinutes, $grund) -ForegroundColor Yellow
+}
+
 Assert-GitRepo
+Clear-StaleIndexLock
 Ensure-Origin -Url $OriginUrl
 Ensure-TargetBranch
 Show-Context
